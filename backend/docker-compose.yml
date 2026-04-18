@@ -1,0 +1,88 @@
+version: "3.8"
+
+# 校园失物招领后端 - 本地开发中间件一键启动
+# 用法：
+#   docker compose up -d          # 启动所有服务
+#   docker compose down           # 停止
+#   docker compose logs -f mysql  # 查看日志
+#   docker compose down -v        # 停止并清空数据（谨慎）
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: campus-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: campus_lostfound
+      MYSQL_USER: campus
+      MYSQL_PASSWORD: campus123
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./sql:/docker-entrypoint-initdb.d  # 启动时自动执行 sql 目录下的 .sql 脚本
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123456"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: campus-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --requirepass redis123
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis123", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: campus-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # 控制台 UI
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ - 可选，后续通知模块会用
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: campus-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbit
+      RABBITMQ_DEFAULT_PASS: rabbit123
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # 管理后台
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+volumes:
+  mysql-data:
+  redis-data:
+  minio-data:
+  rabbitmq-data:

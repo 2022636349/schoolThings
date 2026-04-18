@@ -1,0 +1,40 @@
+{
+  "color": [
+    { "name": "white", "value": "#ffffff" },
+    { "name": "start_window_background", "value": "#000000" },
+    { "name": "action_button_background", "value": "#169cd5" },
+    { "name": "dialog_cancel_background", "value": "#D9001B" },
+    { "name": "black", "value": "#000000" },
+    { "name": "body_color", "value": "#FFF5F1F1" },
+    { "name": "placeholder_background", "value": "#eeeeee" },
+    { "name": "disabled_button_background", "value": "#C2C2C2" },
+    { "name": "border_color", "value": "#FF9B9B9B" },
+    { "name": "login_button", "value": "#007DFF" },
+
+    { "name": "bg_page", "value": "#1C1C1E" },
+    { "name": "bg_card", "value": "#2C2C2E" },
+    { "name": "bg_secondary", "value": "#3A3A3C" },
+    { "name": "bg_input", "value": "#3A3A3C" },
+    { "name": "bg_input_area", "value": "#3A3A3C" },
+    { "name": "bg_image_placeholder", "value": "#3A3A3C" },
+    { "name": "bg_avatar_placeholder", "value": "#4A4A4C" },
+
+    { "name": "text_primary", "value": "#F2F2F7" },
+    { "name": "text_secondary", "value": "#E5E5EA" },
+    { "name": "text_tertiary", "value": "#AEAEB2" },
+    { "name": "text_hint", "value": "#6E6E73" },
+    { "name": "text_disabled", "value": "#48484A" },
+    { "name": "text_caption", "value": "#8E8E93" },
+
+    { "name": "divider", "value": "#FFAEAEAE" },
+    { "name": "divider2", "value": "#FF484747" },
+    { "name": "border", "value": "#38383A" },
+    { "name": "border_dashed", "value": "#48484A" },
+
+    { "name": "badge_lost_bg", "value": "#3D2A1A" },
+    { "name": "badge_find_bg", "value": "#1A2A3D" },
+    { "name": "badge_claimed_bg", "value": "#1A3020" },
+
+    { "name": "icon_primary", "value": "#CCCCCC" }
+  ]
+}

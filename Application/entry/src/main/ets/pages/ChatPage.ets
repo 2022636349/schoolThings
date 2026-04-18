@@ -1,0 +1,493 @@
+import { router } from '@kit.ArkUI';
+import { promptAction, window } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
+import { AuthService } from '../services/AuthService';
+import { ChatService } from '../services/ChatService';
+import { UserService } from '../services/UserService';
+import { UploadService } from '../services/UploadService';
+import { ChatMessage } from '../model/ChatMessage';
+import { ChatSession } from '../model/ChatSession';
+import { formatTime } from '../services/ItemService';
+
+interface ChatParams {
+  sessionId: string;
+  itemId: number;
+  itemText: string;
+  itemType: string;
+  ownerId: string;
+  otherUserId: string;
+  otherUserName: string;
+  otherUserAvatar: string;
+  isInitiator: string;
+}
+
+interface Path {
+  type: string;
+  url: string;
+}
+
+@Entry
+@Component
+export struct ChatPage {
+  @Prop @Watch('onParamsJsonChange') paramsJson: string = '';
+  @State sessionId: string = '';
+  @State itemId: number = 0;
+  @State itemText: string = '';
+  @State itemType: string = '';
+  @State ownerId: string = '';
+  @State otherUserId: string = '';
+  @State otherUserName: string = '';
+  @State otherUserAvatar: string = '';
+  @State isInitiator: boolean = false;
+
+  // 从数据库加载的物品完整信息
+  @State fullItemText: string = '';
+  @State fullItemType: string = '';
+  @State fullMediaListJson: string = '[]';
+  @State fullPublishTime: string = '';
+  @State fullPublisherName: string = '';
+  @State fullPublisherAvatar: string = '';
+
+  @State currentUserId: string = '';
+  @State messages: ChatMessage[] = [];
+  @State inputText: string = '';
+  @State isSending: boolean = false;
+  @State isConfirming: boolean = false;
+  @State iHaveConfirmed: boolean = false;
+  @State isClaimed: boolean = false;
+  @State topHeight: number = 0;
+  @State bottomHeight: number = 0;
+
+  private scroller: Scroller = new Scroller();
+  private pollTimer: number = -1;
+
+  onParamsJsonChange(): void {
+    if (this.paramsJson) {
+      this.applyParams(this.paramsJson);
+    }
+  }
+
+  private applyParams(json: string): void {
+    try {
+      const p = JSON.parse(json) as ChatParams;
+      this.sessionId = p.sessionId;
+      this.itemId = p.itemId;
+      this.itemText = p.itemText || '';
+      this.itemType = p.itemType || '';
+      this.ownerId = p.ownerId;
+      this.otherUserId = p.otherUserId;
+      this.otherUserName = p.otherUserName;
+      this.otherUserAvatar = p.otherUserAvatar;
+      this.isInitiator = p.isInitiator === 'true';
+      this.messages = [];
+      this.iHaveConfirmed = false;
+      this.isClaimed = false;
+      this.fullItemText = '';
+      this.fullItemType = '';
+      if (this.itemId > 0) { this.loadItemDetails(); }
+      // 重启轮询
+      if (this.pollTimer !== -1) { clearInterval(this.pollTimer); }
+      this.loadData();
+      this.pollTimer = setInterval(() => { this.loadData(); }, 3000);
+    } catch (e) {
+      console.error('[ChatPage] applyParams failed:', e);
+    }
+  }
+
+  goBack(): void {
+    if (AppStorage.get<boolean>('isTabletMode') === true) {
+      const prev = AppStorage.get<string>('tabletPrevRightType') || 'none';
+      const prevParams = AppStorage.get<string>('tabletPrevRightParams') || '';
+      AppStorage.setOrCreate('tabletRightParams', prevParams);
+      AppStorage.setOrCreate('tabletRightType', prev);
+      AppStorage.setOrCreate('tabletPrevRightType', 'none');
+      AppStorage.setOrCreate('tabletPrevRightParams', '');
+    } else {
+      router.back();
+    }
+  }
+
+  aboutToAppear(): void {
+    if (this.paramsJson) {
+      this.applyParams(this.paramsJson);
+    } else {
+      const p = router.getParams() as ChatParams;
+      if (p) {
+        this.sessionId = p.sessionId;
+        this.itemId = p.itemId;
+        this.itemText = p.itemText || '';
+        this.itemType = p.itemType || '';
+        this.ownerId = p.ownerId;
+        this.otherUserId = p.otherUserId;
+        this.otherUserName = p.otherUserName;
+        this.otherUserAvatar = p.otherUserAvatar;
+        this.isInitiator = p.isInitiator === 'true';
+      }
+    }
+    window.getLastWindow(getContext(this)).then((win) => {
+      this.topHeight = px2vp(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height);
+      this.bottomHeight = px2vp(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR).bottomRect.height);
+    });
+    if (this.itemId > 0) {
+      this.loadItemDetails();
+    }
+    AuthService.getSession(getContext(this) as common.UIAbilityContext).then((session) => {
+      if (session) {
+        this.currentUserId = session.id;
+      }
+      if (!this.paramsJson) {
+        this.loadData();
+        this.pollTimer = setInterval(() => { this.loadData(); }, 3000);
+      }
+    });
+  }
+
+  aboutToDisappear(): void {
+    if (this.pollTimer !== -1) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = -1;
+    }
+    // 通知 MessagePage 刷新会话列表（新消息 & 未读数）
+    AppStorage.setOrCreate('messageListRefresh', Date.now());
+  }
+
+  async loadItemDetails(): Promise<void> {
+    try {
+      const item = await ChatService.getItemById(this.itemId);
+      if (item) {
+        this.fullItemText = item.text;
+        this.fullItemType = item.type;
+        try {
+          const rawMedia = JSON.parse(item.resource || '[]') as Array<Path>;
+          const resolvedMedia: Array<Path> = [];
+          for (const m of rawMedia) {
+            let url = m.url;
+            if (url && !url.startsWith('http')) {
+              url = await UploadService.getDownloadURL(url);
+            }
+            resolvedMedia.push({ type: m.type, url });
+          }
+          this.fullMediaListJson = JSON.stringify(resolvedMedia);
+        } catch (e) {
+          this.fullMediaListJson = '[]';
+        }
+        if (item.publishTime) {
+          this.fullPublishTime = formatTime(new Date(item.publishTime));
+        }
+      }
+      const publisherMap = await UserService.getPublisherInfoByIds([this.ownerId]);
+      const info = publisherMap[this.ownerId];
+      if (info) {
+        this.fullPublisherName = info.name;
+        this.fullPublisherAvatar = info.avatar;
+      }
+    } catch (e) {
+      console.error('[ChatPage] loadItemDetails 失败:', e);
+    }
+  }
+
+  async loadData(): Promise<void> {
+    try {
+      const msgs = await ChatService.getMessages(this.sessionId);
+      this.messages = msgs;
+      const session = await ChatService.getSession(this.sessionId);
+      if (session) {
+        if (this.isInitiator) {
+          this.iHaveConfirmed = session.initiatorConfirmed === 1;
+        } else {
+          this.iHaveConfirmed = session.ownerConfirmed === 1;
+        }
+        if (session.initiatorConfirmed === 1 && session.ownerConfirmed === 1) {
+          this.isClaimed = true;
+          this.fullItemType = 'claimed';
+          this.itemType = 'claimed';
+        }
+      }
+      this.scroller.scrollEdge(Edge.Bottom);
+    } catch (error) {
+      console.error('[ChatPage] 加载数据失败:', error);
+    }
+  }
+
+  async sendMessage(): Promise<void> {
+    const content = this.inputText.trim();
+    if (!content || this.isSending) return;
+    this.isSending = true;
+    this.inputText = '';
+    try {
+      await ChatService.sendMessage(this.sessionId, this.currentUserId, content);
+      await this.loadData();
+    } catch (error) {
+      console.error('[ChatPage] 发送失败:', error);
+      promptAction.showToast({ message: '发送失败，请重试' });
+    } finally {
+      this.isSending = false;
+    }
+  }
+
+  async onConfirmClaim(): Promise<void> {
+    if (this.isConfirming || this.iHaveConfirmed) return;
+    this.isConfirming = true;
+    try {
+      const bothConfirmed = await ChatService.confirmClaimed(this.sessionId, this.currentUserId);
+      this.iHaveConfirmed = true;
+      if (bothConfirmed) {
+        const session = await ChatService.getSession(this.sessionId);
+        if (session) {
+          await ChatService.markItemClaimed(session);
+        }
+        this.isClaimed = true;
+        this.fullItemType = 'claimed';
+        this.itemType = 'claimed';
+        promptAction.showToast({ message: '认领完成！双方已确认' });
+      } else {
+        promptAction.showToast({ message: '已确认，等待对方确认' });
+      }
+    } catch (error) {
+      console.error('[ChatPage] 确认认领失败:', error);
+      promptAction.showToast({ message: '操作失败，请重试' });
+    } finally {
+      this.isConfirming = false;
+    }
+  }
+
+  // 返回有效类型（优先 DB 加载值）
+  effectiveType(): string {
+    return this.fullItemType || this.itemType;
+  }
+
+  getTypeLabel(): string {
+    const t = this.effectiveType();
+    if (t === 'lost') return '寻物';
+    if (t === 'find') return '招领';
+    if (t === 'claimed') return '已认领';
+    return '物品';
+  }
+
+  getTypeColor(): string {
+    const t = this.effectiveType();
+    if (t === 'lost') return '#E07B39';
+    if (t === 'find') return '#4E8FDF';
+    return '#4CAF50';
+  }
+
+  getTypeBgColor(): ResourceColor {
+    const t = this.effectiveType();
+    if (t === 'lost') return $r('app.color.badge_lost_bg');
+    if (t === 'find') return $r('app.color.badge_find_bg');
+    return $r('app.color.badge_claimed_bg');
+  }
+
+  formatMsgTime(date: Date | null): string {
+    if (!date) return '';
+    const d = new Date(date);
+    const h = d.getHours().toString().padStart(2, '0');
+    const m = d.getMinutes().toString().padStart(2, '0');
+    return `${h}:${m}`;
+  }
+
+  build() {
+    Column() {
+      // 顶部导航
+      Row() {
+        Row() {
+          Image($r('sys.media.ohos_ic_public_arrow_left'))
+            .width(22).height(22).fillColor($r('app.color.icon_primary'))
+        }
+        .width(40).height(40).borderRadius(20)
+        .backgroundColor($r('app.color.bg_secondary'))
+        .justifyContent(FlexAlign.Center)
+        .onClick(() => { this.goBack() })
+
+        // 对方信息
+        Row({ space: 8 }) {
+          if (this.otherUserAvatar) {
+            Image(this.otherUserAvatar)
+              .width(36).height(36).borderRadius(18)
+              .objectFit(ImageFit.Cover).backgroundColor($r('app.color.bg_avatar_placeholder'))
+          } else {
+            Stack() {
+              Circle().width(36).height(36).fill('#4E8FDF').opacity(0.12)
+              Text(this.otherUserName?.charAt(0) || '?')
+                .fontSize(15).fontWeight(FontWeight.Bold).fontColor('#4E8FDF')
+            }.width(36).height(36).borderRadius(18)
+          }
+          Text(this.otherUserName || '对方')
+            .fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_primary'))
+        }
+        .layoutWeight(1)
+        .justifyContent(FlexAlign.Center)
+
+        // 认领按钮
+        if (this.isClaimed) {
+          Text('已认领')
+            .fontSize(13).fontColor('#4CAF50')
+            .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+            .borderRadius(14)
+            .border({ width: 1, color: '#4CAF50' })
+        } else if (this.iHaveConfirmed) {
+          Text('已确认')
+            .fontSize(13).fontColor('#4CAF50')
+            .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+            .borderRadius(14)
+            .border({ width: 1, color: '#4CAF50' })
+        } else {
+          Text(this.isConfirming ? '...' : '认领完成')
+            .fontSize(13).fontColor('#4E8FDF')
+            .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+            .borderRadius(14)
+            .border({ width: 1, color: '#4E8FDF' })
+            .onClick(() => { this.onConfirmClaim() })
+        }
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: this.topHeight + 10, bottom: 14 })
+      .backgroundColor($r('app.color.bg_card'))
+      .shadow({ radius: 4, color: 'rgba(0,0,0,0.04)', offsetY: 2 })
+
+      // 物品信息条（使用 DB 加载的完整数据）
+      Row({ space: 10 }) {
+        Text(this.getTypeLabel())
+          .fontSize(11)
+          .fontColor(this.getTypeColor())
+          .backgroundColor(this.getTypeBgColor())
+          .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+          .borderRadius(4)
+        Text(this.fullItemText || this.itemText || '加载中...')
+          .fontSize(13).fontColor($r('app.color.text_tertiary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+        Text('查看详情 >')
+          .fontSize(12).fontColor('#4E8FDF')
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+      .backgroundColor($r('app.color.bg_input_area'))
+      .border({ width: { bottom: 1 }, color: $r('app.color.border') })
+      .onClick(() => {
+        const dp: Record<string, Object> = {};
+        dp['itemId'] = this.itemId;
+        dp['type'] = this.fullItemType || this.itemType;
+        dp['text'] = this.fullItemText || this.itemText;
+        dp['publishTime'] = this.fullPublishTime;
+        dp['publishId'] = this.ownerId;
+        dp['publisherName'] = this.fullPublisherName || this.otherUserName;
+        dp['publisherAvatar'] = this.fullPublisherAvatar || (this.isInitiator ? this.otherUserAvatar : '');
+        dp['mediaList'] = this.fullMediaListJson;
+        if (AppStorage.get<boolean>('isTabletMode') === true) {
+          AppStorage.setOrCreate('tabletPrevRightType', 'chat');
+          AppStorage.setOrCreate('tabletPrevRightParams', this.paramsJson || JSON.stringify({
+            sessionId: this.sessionId,
+            itemId: this.itemId,
+            itemText: this.itemText,
+            itemType: this.itemType,
+            ownerId: this.ownerId,
+            otherUserId: this.otherUserId,
+            otherUserName: this.otherUserName,
+            otherUserAvatar: this.otherUserAvatar,
+            isInitiator: this.isInitiator ? 'true' : 'false'
+          }));
+          AppStorage.setOrCreate('tabletRightType', 'detail');
+          AppStorage.setOrCreate('tabletRightParams', JSON.stringify(dp));
+        } else {
+          router.pushUrl({ url: 'pages/DetailPage', params: dp });
+        }
+      })
+
+      // 消息列表
+      List({ space: 8, scroller: this.scroller }) {
+        ForEach(this.messages, (msg: ChatMessage) => {
+          ListItem() {
+            this.MessageBubble(msg)
+          }
+        }, (msg: ChatMessage): string => msg.msgId.toString())
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+      .backgroundColor($r('app.color.bg_page'))
+
+      // 输入栏
+      Row({ space: 10 }) {
+        TextInput({ text: this.inputText, placeholder: '输入消息...' })
+          .layoutWeight(1)
+          .height(44)
+          .fontSize(15)
+          .fontColor($r('app.color.text_secondary'))
+          .placeholderColor($r('app.color.text_disabled'))
+          .backgroundColor($r('app.color.bg_input'))
+          .borderRadius(22)
+          .padding({ left: 16, right: 16, top: 0, bottom: 0 })
+          .onChange((val: string) => { this.inputText = val })
+          .onSubmit(() => { this.sendMessage() })
+
+        Button('发送')
+          .height(44)
+          .fontSize(15)
+          .fontColor('#FFFFFF')
+          .backgroundColor(this.inputText.trim() ? '#4E8FDF' : '#C0D0E8')
+          .borderRadius(22)
+          .padding({ left: 18, right: 18 })
+          .enabled(this.inputText.trim().length > 0 && !this.isSending)
+          .onClick(() => { this.sendMessage() })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 10, bottom: this.bottomHeight + 10 })
+      .backgroundColor($r('app.color.bg_card'))
+      .shadow({ radius: 6, color: 'rgba(0,0,0,0.05)', offsetY: -2 })
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+  }
+
+  @Builder
+  MessageBubble(msg: ChatMessage) {
+    Row({ space: 8 }) {
+      if (msg.senderId !== this.currentUserId) {
+        if (this.otherUserAvatar) {
+          Image(this.otherUserAvatar)
+            .width(36).height(36).borderRadius(18)
+            .objectFit(ImageFit.Cover).backgroundColor($r('app.color.bg_avatar_placeholder'))
+        } else {
+          Stack() {
+            Circle().width(36).height(36).fill('#4E8FDF').opacity(0.12)
+            Text(this.otherUserName?.charAt(0) || '?')
+              .fontSize(14).fontWeight(FontWeight.Bold).fontColor('#4E8FDF')
+          }.width(36).height(36).borderRadius(18)
+        }
+      }
+
+      Column({ space: 4 }) {
+        if (msg.senderId !== this.currentUserId) {
+          Text(this.otherUserName || '对方')
+            .fontSize(12).fontColor($r('app.color.text_caption')).alignSelf(ItemAlign.Start)
+        }
+        Row() {
+          Text(msg.content)
+            .fontSize(15)
+            .fontColor(msg.senderId === this.currentUserId ? '#FFFFFF' : $r('app.color.text_primary'))
+            .backgroundColor(msg.senderId === this.currentUserId ? '#4E8FDF' : $r('app.color.bg_card'))
+            .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+            .borderRadius(18)
+            .constraintSize({ maxWidth: 240 })
+            .lineHeight(22)
+        }
+        Text(this.formatMsgTime(msg.sendTime))
+          .fontSize(11).fontColor($r('app.color.text_disabled'))
+          .alignSelf(msg.senderId === this.currentUserId ? ItemAlign.End : ItemAlign.Start)
+      }
+      .alignItems(msg.senderId === this.currentUserId ? HorizontalAlign.End : HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      if (msg.senderId === this.currentUserId) {
+        Row().width(36).height(36)
+      }
+    }
+    .width('100%')
+    .justifyContent(msg.senderId === this.currentUserId ? FlexAlign.End : FlexAlign.Start)
+    .padding({ left: 4, right: 4, top: 2, bottom: 2 })
+  }
+}

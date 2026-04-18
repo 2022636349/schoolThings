@@ -1,0 +1,20 @@
+{
+  "src": [
+    "pages/LoginPage",
+    "pages/HomePage",
+    "pages/MainPage",
+    "pages/HallPage",
+    "pages/MessagePage",
+    "pages/PersonalPage",
+    "pages/DetailPage",
+    "pages/PostPage",
+    "pages/MediaPreview",
+    "pages/ChatPage",
+    "pages/MyPostsPage",
+    "pages/RegisterPage",
+    "pages/FrontPage",
+    "pages/RankingPage",
+    "pages/WarningPage",
+    "pages/MyClaimedPage"
+  ]
+}
