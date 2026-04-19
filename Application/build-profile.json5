@@ -51,10 +51,6 @@
           ]
         }
       ]
-    },
-    {
-      "name": "cloud_objects",
-      "srcPath": "./cloud_objects"
     }
   ]
 }
