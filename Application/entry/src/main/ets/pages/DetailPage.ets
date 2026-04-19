@@ -5,6 +5,8 @@ import { ChatService } from '../services/ChatService';
 import { ItemService, MediaItem } from '../services/ItemService';
 import { ClaimRequestDialog } from '../components/ClaimRequestDialog';
 import { DisputeDialog } from '../components/DisputeDialog';
+import { ClaimService } from '../services/ClaimService';
+import { ReportService } from '../services/ReportService';
 import { deriveStatus, getStatusLabel, getStatusColor, getStatusBg } from '../model/ItemCategory';
 
 interface DetailParams {
@@ -21,6 +23,12 @@ interface DetailParams {
   status: string;
   claimedBy: string | null;
   lostTime: number;
+}
+
+interface HallLikeSyncPayload {
+  itemId: number;
+  isLiked: boolean;
+  likeCount: number;
 }
 
 @Entry
@@ -119,6 +127,13 @@ export struct DetailPage {
       const newLikeStatus = await ItemService.toggleLike(this.params.itemId, this.currentUserId);
       this.isLiked = newLikeStatus;
       this.likeCount = newLikeStatus ? this.likeCount + 1 : Math.max(0, this.likeCount - 1);
+      this.params.likeCount = this.likeCount;
+      const syncPayload: HallLikeSyncPayload = {
+        itemId: this.params.itemId,
+        isLiked: this.isLiked,
+        likeCount: this.likeCount
+      };
+      AppStorage.setOrCreate('hallLikeSync', JSON.stringify(syncPayload));
       promptAction.showToast({ message: newLikeStatus ? '已点赞' : '已取消点赞' });
     } catch (error) {
       promptAction.showToast({ message: '操作失败' });
@@ -144,6 +159,7 @@ export struct DetailPage {
     this.isDeleting = true;
     try {
       await ItemService.deleteItem(this.params.itemId, this.currentUserId);
+      AppStorage.setOrCreate('myPostsRefresh', Date.now());
       AppStorage.setOrCreate('homeNeedRefresh', true);
       promptAction.showToast({ message: '删除成功' });
       this.goBack();
@@ -157,24 +173,23 @@ export struct DetailPage {
 
   async handleClaimRequest(description: string): Promise<void> {
     try {
-      // Phase 3 骨架：这里应该创建 ClaimRequest 记录并推送通知给物品拥有者
-      // 现在先 toast 提示"申请已提交"
+      await ClaimService.create(this.params.itemId, description);
       promptAction.showToast({ message: '申请已提交，等待物品拥有者确认' });
       this.showClaimDialog = false;
-      // TODO: Phase 3 实现完整逻辑
     } catch (error) {
-      promptAction.showToast({ message: '提交失败' });
+      const msg = error instanceof Error ? error.message : '提交失败';
+      promptAction.showToast({ message: msg });
     }
   }
 
   async handleDispute(description: string): Promise<void> {
     try {
-      // Phase 3 骨架：这里应该创建 Dispute 记录
+      await ReportService.reportItem(this.params.itemId, description);
       promptAction.showToast({ message: '异议已提交，管理员将尽快处理' });
       this.showDisputeDialog = false;
-      // TODO: Phase 3 实现完整逻辑
     } catch (error) {
-      promptAction.showToast({ message: '提交失败' });
+      const msg = error instanceof Error ? error.message : '提交失败';
+      promptAction.showToast({ message: msg });
     }
   }
 
@@ -200,6 +215,12 @@ export struct DetailPage {
         this.currentUserId,
         this.params.publishId
       );
+      await ChatService.sendItemCardMessage(session.sessionId, {
+        itemId: this.params.itemId,
+        title: this.params.text.split('\n')[0] || this.params.text || '物品卡片',
+        type: this.params.type,
+        publisherName: this.params.publisherName || '匿名用户'
+      });
       const cp: Record<string, Object> = {};
       cp['sessionId'] = session.sessionId;
       cp['itemId'] = this.params.itemId;
@@ -408,6 +429,27 @@ export struct DetailPage {
           if (this.currentUserId === this.params.publishId) {
             Row({ space: 12 }) {
               Text('您发布的物品').fontSize(15).fontColor($r('app.color.text_hint')).layoutWeight(1)
+              Button('编辑')
+                .height(40).fontSize(15).fontColor('#FFFFFF')
+                .backgroundColor('#4E8FDF')
+                .borderRadius(20).padding({ left: 20, right: 20 })
+                .onClick(() => {
+                  const editParams: Record<string, Object> = {};
+                  editParams['itemId'] = this.params.itemId;
+                  editParams['type'] = this.params.type;
+                  editParams['text'] = this.params.text;
+                  editParams['publishTime'] = this.params.publishTime;
+                  editParams['publishId'] = this.params.publishId;
+                  editParams['publisherName'] = this.params.publisherName;
+                  editParams['publisherAvatar'] = this.params.publisherAvatar;
+                  editParams['mediaList'] = JSON.stringify(this.mediaList);
+                  editParams['category'] = this.params.category;
+                  editParams['likeCount'] = this.params.likeCount;
+                  editParams['status'] = this.params.status;
+                  editParams['claimedBy'] = this.params.claimedBy || '';
+                  editParams['lostTime'] = this.params.lostTime;
+                  router.pushUrl({ url: 'pages/PostPage', params: editParams });
+                })
               Button(this.isDeleting ? '删除中...' : '删除')
                 .height(40).fontSize(15).fontColor('#FFFFFF')
                 .backgroundColor(this.isDeleting ? '#FFAAAA' : '#FF4D4F')
@@ -417,6 +459,18 @@ export struct DetailPage {
             .width('100%').height(50).alignItems(VerticalAlign.Center)
           } else if (this.params.status === 'claimed') {
             Row({ space: 12 }) {
+              if (this.currentUserId === this.params.publishId) {
+                Button('恢复招领中').layoutWeight(1).height(44)
+                  .fontSize(14).fontColor('#FFFFFF')
+                  .backgroundColor('#FF9500').borderRadius(8)
+                  .onClick(async () => {
+                    await ItemService.updateStatus(this.params.itemId, 'active');
+                    this.params.status = 'active';
+                    AppStorage.setOrCreate('myPostsRefresh', Date.now());
+                    AppStorage.setOrCreate('homeNeedRefresh', true);
+                    promptAction.showToast({ message: '已恢复为进行中' });
+                  })
+              }
               Button('联系TA').layoutWeight(1).height(44)
                 .fontSize(14).fontColor('#FFFFFF')
                 .backgroundColor('#4E8FDF').borderRadius(8)
@@ -435,11 +489,26 @@ export struct DetailPage {
                 .backgroundColor('#4E8FDF').borderRadius(8)
                 .onClick(() => { this.contactOwner() })
 
-              Button(this.params.type === 'lost' ? '申请认领' : '申请归还')
-                .layoutWeight(1).height(44)
-                .fontSize(14).fontColor('#FFFFFF')
-                .backgroundColor('#07C160').borderRadius(8)
-                .onClick(() => { this.showClaimDialog = true })
+              if (this.currentUserId === this.params.publishId) {
+                Button('标记已认领')
+                  .layoutWeight(1).height(44)
+                  .fontSize(14).fontColor('#FFFFFF')
+                  .backgroundColor('#07C160').borderRadius(8)
+                  .onClick(async () => {
+                    await ItemService.updateStatus(this.params.itemId, 'claimed');
+                    this.params.status = 'claimed';
+                    this.params.claimedBy = this.currentUserId;
+                    AppStorage.setOrCreate('myPostsRefresh', Date.now());
+                    AppStorage.setOrCreate('homeNeedRefresh', true);
+                    promptAction.showToast({ message: '已标记为已认领' });
+                  })
+              } else {
+                Button(this.params.type === 'lost' ? '申请认领' : '申请归还')
+                  .layoutWeight(1).height(44)
+                  .fontSize(14).fontColor('#FFFFFF')
+                  .backgroundColor('#07C160').borderRadius(8)
+                  .onClick(() => { this.showClaimDialog = true })
+              }
             }
             .width('100%')
           }

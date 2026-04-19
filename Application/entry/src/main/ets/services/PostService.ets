@@ -1,54 +1,29 @@
-import { cloudDatabase } from '@kit.CloudFoundationKit';
 import { common } from '@kit.AbilityKit';
-import { ItemInfo } from '../model/ItemCard';
-import { UserInfo } from '../model/User';
-import { AuthService } from './AuthService';
+import { ApiClient } from '../common/ApiClient';
 import { UploadService } from './UploadService';
 
 export interface MediaItem {
-  type: 'image' | 'video';
+  type: string;  // 'image' | 'video'
   url: string;
 }
 
-const ZONE_NAME = 'User';
+interface CreateItemReqBody {
+  type: string;
+  title?: string;
+  description: string;
+  category?: string;
+  location?: string;
+  contact?: string;
+  lostTime?: number;
+  mediaList?: MediaItem[];
+}
 
 export class PostService {
-  // 查询当前最大 itemId，返回 max+1；表为空时返回 1
-  private static async generateNextItemId(): Promise<number> {
-    try {
-      const db = cloudDatabase.zone(ZONE_NAME);
-      const query = new cloudDatabase.DatabaseQuery(ItemInfo);
-      query.orderByDesc('itemId');
-      query.limit(1);
-      const result = (await db.query(query)) as ItemInfo[];
-      if (result && result.length > 0) {
-        return result[0].itemId + 1;
-      }
-      return 1;
-    } catch (error) {
-      console.error('[PostService] generateNextItemId 失败', error);
-      return 1;
-    }
-  }
-
-  // 批量上传媒体列表
-  private static async uploadMediaList(
-    context: common.UIAbilityContext,
-    mediaList: MediaItem[],
-    itemId: number
-  ): Promise<MediaItem[]> {
-    const uploaded: MediaItem[] = [];
-    for (let i = 0; i < mediaList.length; i++) {
-      const media = mediaList[i];
-      const ext = media.type === 'video' ? 'mp4' : 'jpg';
-      const cloudPath = `items/${itemId}/${i}.${ext}`;
-      await UploadService.uploadFile(context, media.url, cloudPath);
-      uploaded.push({ type: media.type, url: cloudPath });
-    }
-    return uploaded;
-  }
-
-  // 对外发布方法
+  /**
+   * 发布新物品：
+   * 1) 先把 mediaList 里的本地 URI 逐个上传后台 → 拿到公开 URL
+   * 2) 再调用 POST /items 写入数据库
+   */
   static async publish(
     context: common.UIAbilityContext,
     type: string,
@@ -56,39 +31,95 @@ export class PostService {
     location: string,
     mediaList: MediaItem[]
   ): Promise<void> {
-    const session = await AuthService.getSession(context);
-    const publishId = session?.id ?? '';
-
-    const itemId = await PostService.generateNextItemId();
-
-    let uploadedMedia: MediaItem[] = [];
-    if (mediaList.length > 0) {
-      uploadedMedia = await PostService.uploadMediaList(context, mediaList, itemId);
+    // 1. 上传媒体
+    const uploaded: MediaItem[] = [];
+    for (let i = 0; i < mediaList.length; i++) {
+      const m = mediaList[i];
+      const ext = m.type === 'video' ? 'mp4' : 'jpg';
+      const cloudPath = `items/${i}.${ext}`;
+      const url = await UploadService.uploadFile(context, m.url, cloudPath);
+      uploaded.push({ type: m.type, url: url });
     }
 
-    const db = cloudDatabase.zone(ZONE_NAME);
-    const newItem = new ItemInfo();
-    newItem.itemId = itemId;
-    newItem.type = type;
-    newItem.text = `${description}\n地点：${location}`;
-    newItem.publishTime = new Date();
-    newItem.publishId = publishId;
-    newItem.resource = JSON.stringify(uploadedMedia);
-    await db.upsert(newItem);
+    // 2. 调后端创建
+    const body: CreateItemReqBody = {
+      type: type,
+      description: description,
+      location: location,
+      mediaList: uploaded
+    };
+    await ApiClient.post<Object>('/items', body, context);
+  }
 
-    // 发布成功后递增用户 Published 计数
-    if (publishId) {
-      try {
-        const userQuery = new cloudDatabase.DatabaseQuery(UserInfo).equalTo('ID', publishId);
-        const users = (await db.query(userQuery)) as UserInfo[];
-        if (users && users.length > 0) {
-          const user = users[0];
-          user.Published = (user.Published || 0) + 1;
-          await db.upsert(user);
-        }
-      } catch (e) {
-        console.error('[PostService] 更新发布计数失败:', e);
+  /**
+   * 带分类 / 时间 / 标题的完整发布
+   */
+  static async publishFull(
+    context: common.UIAbilityContext,
+    type: string,
+    title: string,
+    description: string,
+    location: string,
+    category: string,
+    contact: string,
+    lostTime: number,
+    mediaList: MediaItem[]
+  ): Promise<void> {
+    const uploaded: MediaItem[] = [];
+    for (let i = 0; i < mediaList.length; i++) {
+      const m = mediaList[i];
+      const ext = m.type === 'video' ? 'mp4' : 'jpg';
+      const cloudPath = `items/${i}.${ext}`;
+      const url = await UploadService.uploadFile(context, m.url, cloudPath);
+      uploaded.push({ type: m.type, url: url });
+    }
+    const body: CreateItemReqBody = {
+      type: type,
+      title: title,
+      description: description,
+      category: category,
+      location: location,
+      contact: contact,
+      lostTime: lostTime,
+      mediaList: uploaded
+    };
+    await ApiClient.post<Object>('/items', body, context);
+  }
+
+  static async update(
+    context: common.UIAbilityContext,
+    itemId: number,
+    type: string,
+    title: string,
+    description: string,
+    location: string,
+    category: string,
+    contact: string,
+    lostTime: number,
+    mediaList: MediaItem[]
+  ): Promise<void> {
+    const uploaded: MediaItem[] = [];
+    for (let i = 0; i < mediaList.length; i++) {
+      const m = mediaList[i];
+      if (m.url.startsWith('http://') || m.url.startsWith('https://')) {
+        uploaded.push({ type: m.type, url: m.url });
+        continue;
       }
+      const ext = m.type === 'video' ? 'mp4' : 'jpg';
+      const cloudPath = `items/${itemId}/${i}.${ext}`;
+      const url = await UploadService.uploadFile(context, m.url, cloudPath);
+      uploaded.push({ type: m.type, url: url });
     }
+    const body: CreateItemReqBody = {
+      type: type,
+      title: title,
+      description: description,
+      category: category,
+      location: location,
+      contact: contact,
+      lostTime: lostTime,
+      mediaList: uploaded
+    };
+    await ApiClient.put<Object>(`/items/${itemId}`, body, context);
   }
 }

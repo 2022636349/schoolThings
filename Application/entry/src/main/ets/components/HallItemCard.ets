@@ -3,6 +3,8 @@
  * 显示：图片 + 名称 + 描述 + 分类 badge + 状态标签 + 点赞按钮
  */
 import { ItemService, MediaItem } from '../services/ItemService';
+import { AuthService } from '../services/AuthService';
+import { common } from '@kit.AbilityKit';
 import { deriveStatus, getStatusLabel, getStatusColor, getStatusBg } from '../model/ItemCategory';
 import { HallItemData } from '../model/HallItemData';
 
@@ -14,10 +16,25 @@ export struct HallItemCard {
   @State currentUserId: string = '';
 
   onCardClick: (item: HallItemData) => void = () => {};
-  onLikeClick: () => void = () => {};
+  onLikeClick: (itemId: number, isLiked: boolean, likeCount: number) => void = () => {};
 
   aboutToAppear(): void {
     this.likeCount = this.item.likeCount || 0;
+    AuthService.getSession(getContext(this) as common.UIAbilityContext).then((session) => {
+      if (session) {
+        this.currentUserId = session.id;
+        this.syncLikeState();
+      }
+    });
+  }
+
+  private async syncLikeState(): Promise<void> {
+    if (!this.currentUserId || !this.item.itemId) return;
+    try {
+      this.isLiked = await ItemService.hasLiked(this.item.itemId, this.currentUserId);
+    } catch (e) {
+      console.warn('[HallItemCard] 检查点赞状态失败:', e);
+    }
   }
 
   private async handleLikeClick(): Promise<void> {
@@ -26,7 +43,7 @@ export struct HallItemCard {
       const newLikeStatus = await ItemService.toggleLike(this.item.itemId, this.currentUserId);
       this.isLiked = newLikeStatus;
       this.likeCount = newLikeStatus ? this.likeCount + 1 : Math.max(0, this.likeCount - 1);
-      this.onLikeClick();
+      this.onLikeClick(this.item.itemId, this.isLiked, this.likeCount);
     } catch (e) {
       console.warn('[HallItemCard] 点赞失败:', e);
     }
@@ -39,7 +56,6 @@ export struct HallItemCard {
         return list[0].url || '';
       }
     } catch (e) {
-      // ignore
     }
     return '';
   }
@@ -51,7 +67,6 @@ export struct HallItemCard {
   build() {
     Column() {
       Row({ space: 12 }) {
-        // 图片
         if (this.getMediaUrl()) {
           Image(this.getMediaUrl())
             .width(100).height(100).borderRadius(8)
@@ -65,9 +80,7 @@ export struct HallItemCard {
           .justifyContent(FlexAlign.Center)
         }
 
-        // 信息列
         Column({ space: 8 }) {
-          // 标题和分类
           Row({ space: 8 }) {
             Text(this.item.text.split('\n')[0] || '物品')
               .fontSize(15).fontWeight(FontWeight.Medium)
@@ -84,14 +97,12 @@ export struct HallItemCard {
             }
           }
 
-          // 描述（2 行）
           Text(this.item.text)
             .fontSize(13).fontColor($r('app.color.text_hint'))
             .lineHeight(18)
             .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
 
-          // 底行：发布者 + 状态 + 点赞
           Row({ space: 8 }) {
             Text(this.item.publisherName || '匿名')
               .fontSize(11).fontColor($r('app.color.text_hint'))
@@ -107,7 +118,9 @@ export struct HallItemCard {
 
             Row({ space: 2 }) {
               Text(this.isLiked ? '❤️' : '🤍').fontSize(12)
-              Text(this.likeCount.toString()).fontSize(10).fontColor($r('app.color.text_hint'))
+              Text(this.likeCount.toString())
+                .fontSize(10)
+                .fontColor(this.isLiked ? '#FF4D4F' : $r('app.color.text_hint'))
             }
             .padding(4).borderRadius(3)
             .onClick(() => { this.handleLikeClick(); })

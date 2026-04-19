@@ -12,9 +12,14 @@
     "pages/ChatPage",
     "pages/MyPostsPage",
     "pages/RegisterPage",
+    "pages/ResetPasswordPage",
+    "pages/AnnouncementDetailPage",
     "pages/FrontPage",
     "pages/RankingPage",
     "pages/WarningPage",
-    "pages/MyClaimedPage"
+    "pages/MyClaimedPage",
+    "pages/MyLikedPage",
+    "pages/MyReportsPage",
+    "pages/FeedbackPage"
   ]
 }

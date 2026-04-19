@@ -1,26 +1,10 @@
-import { cloudDatabase } from '@kit.CloudFoundationKit';
-
-export class ChatMessage extends cloudDatabase.DatabaseObject {
-  public msgId: number;
-  public sessionId: string;
-  public senderId: string;
-  public content: string;
-  public sendTime: Date | null;
-  public messageType: string;       // 'text' | 'image'
-  public imageUrl: string | null;   // 当 messageType='image' 时有效
-
-  public naturalbase_ClassName(): string {
-    return 'ChatMessage';
-  }
-
-  constructor() {
-    super();
-    this.msgId = 0;
-    this.sessionId = '';
-    this.senderId = '';
-    this.content = '';
-    this.sendTime = null;
-    this.messageType = 'text';
-    this.imageUrl = null;
-  }
+// 消息（与后端 ChatMessageVO 对齐的前端纯数据模型）
+export class ChatMessage {
+  public msgId: number = 0;
+  public sessionId: string = '';
+  public senderId: string = '';
+  public content: string = '';
+  public sendTime: Date | null = null;
+  public messageType: string = 'text';       // text / image / item-card / system
+  public imageUrl: string | null = null;
 }

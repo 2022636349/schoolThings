@@ -28,13 +28,14 @@ CREATE TABLE `user` (
     `status`        TINYINT         NOT NULL DEFAULT 1 COMMENT '状态 1正常 0禁用',
     `last_login_at` DATETIME                 DEFAULT NULL COMMENT '最后登录时间',
     `last_login_ip` VARCHAR(64)              DEFAULT NULL COMMENT '最后登录 IP',
+    `push_token`    VARCHAR(512)             DEFAULT NULL COMMENT '推送 token',
     `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     `deleted`       TINYINT         NOT NULL DEFAULT 0 COMMENT '软删 1=已删',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_phone_hash` (`phone_hash`),
     UNIQUE KEY `uk_open_id` (`open_id`),
-    KEY `idx_student_no` (`student_no`),
+    UNIQUE KEY `uk_student_no` (`student_no`),
     KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
 
@@ -251,23 +252,21 @@ CREATE TABLE `dispute` (
 DROP TABLE IF EXISTS `chat_session`;
 CREATE TABLE `chat_session` (
     `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `user_a_id`       BIGINT UNSIGNED NOT NULL COMMENT '较小的 userId',
-    `user_b_id`       BIGINT UNSIGNED NOT NULL COMMENT '较大的 userId',
-    `item_id`         BIGINT UNSIGNED          DEFAULT NULL COMMENT '关联物品',
+    `initiator_id`    BIGINT UNSIGNED NOT NULL COMMENT '发起方 userId（通常是看到物品的用户）',
+    `owner_id`        BIGINT UNSIGNED NOT NULL COMMENT '物品拥有者 userId',
+    `item_id`         BIGINT UNSIGNED NOT NULL COMMENT '关联物品',
     `last_message`    VARCHAR(512)             DEFAULT NULL COMMENT '最后一条消息摘要',
     `last_message_at` DATETIME                 DEFAULT NULL,
-    `a_unread_count`  INT             NOT NULL DEFAULT 0,
-    `b_unread_count`  INT             NOT NULL DEFAULT 0,
-    `a_deleted`       TINYINT         NOT NULL DEFAULT 0,
-    `b_deleted`       TINYINT         NOT NULL DEFAULT 0,
+    `initiator_confirmed` TINYINT     NOT NULL DEFAULT 0 COMMENT '发起方已确认认领',
+    `owner_confirmed`     TINYINT     NOT NULL DEFAULT 0 COMMENT '拥有方已确认认领',
     `created_at`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at`      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_users_item` (`user_a_id`, `user_b_id`, `item_id`),
-    KEY `idx_a` (`user_a_id`),
-    KEY `idx_b` (`user_b_id`),
+    UNIQUE KEY `uk_item_initiator` (`item_id`, `initiator_id`),
+    KEY `idx_initiator` (`initiator_id`),
+    KEY `idx_owner` (`owner_id`),
     KEY `idx_last_msg` (`last_message_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会话';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='聊天会话';
 
 DROP TABLE IF EXISTS `chat_message`;
 CREATE TABLE `chat_message` (

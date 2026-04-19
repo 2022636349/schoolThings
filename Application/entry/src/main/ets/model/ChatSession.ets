@@ -1,28 +1,18 @@
-import { cloudDatabase } from '@kit.CloudFoundationKit';
+// 会话（与后端 ChatSessionVO 对齐的前端纯数据模型）
+export class ChatSession {
+  public sessionId: string = '';
+  public itemId: number = 0;
+  public initiatorId: string = '';
+  public ownerId: string = '';
+  public lastMessage: string | null = null;
+  public lastTime: Date | null = null;
+  public initiatorConfirmed: number = 0;
+  public ownerConfirmed: number = 0;
 
-export class ChatSession extends cloudDatabase.DatabaseObject {
-  public sessionId: string;
-  public itemId: number;
-  public initiatorId: string;
-  public ownerId: string;
-  public lastMessage: string | null;
-  public lastTime: Date | null;
-  public initiatorConfirmed: number;
-  public ownerConfirmed: number;
-
-  public naturalbase_ClassName(): string {
-    return 'ChatSession';
-  }
-
-  constructor() {
-    super();
-    this.sessionId = '';
-    this.itemId = 0;
-    this.initiatorId = '';
-    this.ownerId = '';
-    this.lastMessage = null;
-    this.lastTime = null;
-    this.initiatorConfirmed = 0;
-    this.ownerConfirmed = 0;
-  }
+  // 可选的展示字段（后端会带回来以便列表展示对端信息）
+  public peerName: string = '';
+  public peerAvatar: string = '';
+  public itemTitle: string = '';
+  public itemStatus: string = '';
+  public itemType: string = '';
 }

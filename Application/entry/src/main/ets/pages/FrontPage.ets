@@ -1,4 +1,6 @@
 import { router, curves } from '@kit.ArkUI';
+import { AnnouncementService, AnnouncementItem } from '../services/AnnouncementService';
+import { ItemService, ItemCard } from '../services/ItemService';
 import { TopNavBar } from '../components/TopNavBar';
 
 /**
@@ -14,6 +16,9 @@ export struct FrontPage {
   @Prop topHeight: number = 0;
   @Prop bottomHeight: number = 0;
   @State isRefreshing: boolean = false;
+  @State announcements: AnnouncementItem[] = [];
+  @State currentAnnouncementIndex: number = 0;
+  @State hotItems: ItemCard[] = [];
 
   // 🚀 控制卡片缩放比例和透明度的状态变量
   @State cardScale: number = 0.8;
@@ -21,10 +26,21 @@ export struct FrontPage {
 
   onPageShow() {
     this.playPopAnimation();
+    this.loadAnnouncements();
   }
 
   aboutToAppear() {
     this.playPopAnimation();
+    this.loadAnnouncements();
+  }
+
+  private async loadAnnouncements(): Promise<void> {
+    try {
+      this.announcements = await AnnouncementService.list(5);
+      this.hotItems = await ItemService.listHot(3);
+    } catch (e) {
+      console.error('[FrontPage] loadAnnouncements failed:', e);
+    }
   }
 
   // 🚀 弹簧动画逻辑
@@ -55,6 +71,12 @@ export struct FrontPage {
     }, 50);
   }
 
+  private openAnnouncement(): void {
+    if (this.announcements.length === 0) return;
+    const current = this.announcements[this.currentAnnouncementIndex] || this.announcements[0];
+    router.pushUrl({ url: 'pages/AnnouncementDetailPage', params: { id: current.id } });
+  }
+
   openRanking(): void {
     if (AppStorage.get<boolean>('isTabletMode') === true) {
       AppStorage.setOrCreate('tabletPrevRightType', 'none');
@@ -73,8 +95,26 @@ export struct FrontPage {
     }
   }
 
+  private buildDetailParams(item: ItemCard): Record<string, Object> {
+    const p: Record<string, Object> = {};
+    p['itemId'] = item.itemId;
+    p['type'] = item.type || 'lost';
+    p['text'] = item.text || '热门物品';
+    p['publishTime'] = item.publishTime || '';
+    p['publishId'] = item.publishId || '';
+    p['publisherName'] = item.publisherName || '匿名用户';
+    p['publisherAvatar'] = item.publisherAvatar || '';
+    p['mediaList'] = JSON.stringify(item.mediaList || []);
+    p['category'] = item.category || '其他';
+    p['likeCount'] = item.likeCount || 0;
+    p['status'] = item.status || 'active';
+    p['claimedBy'] = item.claimedBy || '';
+    p['lostTime'] = item.lostTime || 0;
+    return p;
+  }
+
   async doRefresh(): Promise<void> {
-    // Phase 4 填充：重新拉 Announcement + 热门推荐
+    await this.loadAnnouncements();
     setTimeout(() => { this.isRefreshing = false; }, 600);
   }
 
@@ -86,39 +126,52 @@ export struct FrontPage {
         Scroll() {
           Column({ space: 16 }) {
 
-            // ── 公告轮播（占位） ──
+            // ── 公告轮播 ──
             Stack({ alignContent: Alignment.Bottom }) {
-              Column() {
-                Row() {
-                  Text('📢')
-                    .fontSize(28)
-                  Column({ space: 4 }) {
-                    Text('校园公告')
-                      .fontSize(16)
-                      .fontWeight(FontWeight.Bold)
-                      .fontColor('#FFFFFF')
-                    Text('欢迎来到校园失物招领')
-                      .fontSize(12)
-                      .fontColor('rgba(255,255,255,0.85)')
+              Swiper() {
+                ForEach(this.announcements.length > 0 ? this.announcements : [{ id: 0, title: '欢迎来到校园失物招领', content: '', cover: null, priority: 0, createdAt: 0 }], (announcement: AnnouncementItem) => {
+                  Column() {
+                    Row() {
+                      Text('📢')
+                        .fontSize(28)
+                      Column({ space: 4 }) {
+                        Text('校园公告')
+                          .fontSize(16)
+                          .fontWeight(FontWeight.Bold)
+                          .fontColor('#FFFFFF')
+                        Text(announcement.title)
+                          .fontSize(12)
+                          .fontColor('rgba(255,255,255,0.85)')
+                          .maxLines(2)
+                          .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      }
+                      .alignItems(HorizontalAlign.Start)
+                      .margin({ left: 14 })
+                      .layoutWeight(1)
+                    }
+                    .width('100%')
+                    .alignItems(VerticalAlign.Center)
                   }
-                  .alignItems(HorizontalAlign.Start)
-                  .margin({ left: 14 })
-                  .layoutWeight(1)
-                }
-                .width('100%')
-                .alignItems(VerticalAlign.Center)
+                  .width('100%')
+                  .height(130)
+                  .padding(18)
+                  .borderRadius(16)
+                  .linearGradient({
+                    angle: 135,
+                    colors: [['#4E8FDF', 0], ['#7AAEE8', 0.6], ['#B5D1F2', 1]]
+                  })
+                  .justifyContent(FlexAlign.Center)
+                })
               }
               .width('100%')
               .height(130)
-              .padding(18)
-              .borderRadius(16)
-              .linearGradient({
-                angle: 135,
-                colors: [['#4E8FDF', 0], ['#7AAEE8', 0.6], ['#B5D1F2', 1]]
-              })
-              .justifyContent(FlexAlign.Center)
+              .autoPlay(this.announcements.length > 1)
+              .interval(4000)
+              .indicator(this.announcements.length > 1)
+              .onChange((index: number) => { this.currentAnnouncementIndex = index })
             }
             .width('100%')
+            .onClick(() => { this.openAnnouncement() })
             // 🚀 绑定状态变量
             .scale({ x: this.cardScale, y: this.cardScale })
             .opacity(this.cardOpacity)
@@ -162,7 +215,7 @@ export struct FrontPage {
             .opacity(this.cardOpacity)
 
 
-            // ── 热门推荐（占位） ──
+            // ── 热门推荐 ──
             Column({ space: 12 }) {
               Row({ space: 6 }) {
                 Row().width(3).height(16).borderRadius(2).backgroundColor('#4E8FDF')
@@ -172,13 +225,47 @@ export struct FrontPage {
               }
               .width('100%').alignItems(VerticalAlign.Center)
 
-              Column() {
-                Text('暂无热门内容')
-                  .fontSize(14).fontColor($r('app.color.text_hint'))
+              if (this.hotItems.length === 0) {
+                Column() {
+                  Text('暂无热门内容')
+                    .fontSize(14).fontColor($r('app.color.text_hint'))
+                }
+                .width('100%').height(160)
+                .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+                .backgroundColor($r('app.color.bg_card')).borderRadius(14)
+              } else {
+                Column({ space: 10 }) {
+                  ForEach(this.hotItems, (item: ItemCard) => {
+                    Row({ space: 8 }) {
+                      Text('•').fontSize(14).fontColor('#4E8FDF')
+                      Text(item.text || '热门物品')
+                        .fontSize(14)
+                        .fontColor($r('app.color.text_primary'))
+                        .maxLines(2)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                        .layoutWeight(1)
+                      Text(`❤️ ${item.likeCount}`)
+                        .fontSize(12)
+                        .fontColor($r('app.color.text_hint'))
+                    }
+                    .width('100%')
+                    .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+                    .backgroundColor($r('app.color.bg_card'))
+                    .borderRadius(12)
+                    .onClick(() => {
+                      const p = this.buildDetailParams(item);
+                      if (AppStorage.get<boolean>('isTabletMode') === true) {
+                        AppStorage.setOrCreate('tabletPrevRightType', 'none');
+                        AppStorage.setOrCreate('tabletRightType', 'detail');
+                        AppStorage.setOrCreate('tabletRightParams', JSON.stringify(p));
+                      } else {
+                        router.pushUrl({ url: 'pages/DetailPage', params: p });
+                      }
+                    })
+                  })
+                }
+                .width('100%')
               }
-              .width('100%').height(160)
-              .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
-              .backgroundColor($r('app.color.bg_card')).borderRadius(14)
             }
             .width('100%')
             // 🚀 绑定状态变量

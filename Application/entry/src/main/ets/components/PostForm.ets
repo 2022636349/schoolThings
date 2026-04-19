@@ -1,4 +1,5 @@
 import { ITEM_CATEGORIES } from '../model/ItemCategory';
+import { MediaItem } from '../services/PostService';
 
 /**
  * 发布物品表单组件
@@ -14,9 +15,11 @@ export struct PostForm {
   @Link contact: string;
   @Link type: string;            // 'lost' 或 'found'
   @Link imageUrl: string;
+  @Link mediaList: MediaItem[];
   @State isSubmitting: boolean = false;
   @State showDatePicker: boolean = false;
   @State showCategoryPicker: boolean = false;
+  @State draftLostTime: number = 0;
 
   onSubmit: () => void = (): void => {};
   onImagePick: () => void = (): void => {};
@@ -31,18 +34,33 @@ export struct PostForm {
     Column({ space: 16 }) {
       // 图片上传区域
       Column() {
-        if (this.imageUrl) {
-          Image(this.imageUrl)
+        if (this.mediaList.length === 1) {
+          Image(this.mediaList[0].url)
             .width('100%')
             .height(200)
             .objectFit(ImageFit.Cover)
             .borderRadius(8)
+        } else if (this.mediaList.length === 2) {
+          Row({ space: 4 }) {
+            Image(this.mediaList[0].url).layoutWeight(1).height(160).objectFit(ImageFit.Cover)
+            Image(this.mediaList[1].url).layoutWeight(1).height(160).objectFit(ImageFit.Cover)
+          }
+          .width('100%').borderRadius(8).clip(true)
+        } else if (this.mediaList.length >= 3) {
+          Row({ space: 4 }) {
+            Image(this.mediaList[0].url).layoutWeight(1).height(180).objectFit(ImageFit.Cover)
+            Column({ space: 4 }) {
+              Image(this.mediaList[1].url).width('100%').height(88).objectFit(ImageFit.Cover)
+              Image(this.mediaList[2].url).width('100%').height(88).objectFit(ImageFit.Cover)
+            }.layoutWeight(1).height(180)
+          }
+          .width('100%').height(180).borderRadius(8).clip(true)
         } else {
           Column() {
             Text('+')
               .fontSize(40)
               .fontColor('#999')
-            Text('点击上传图片')
+            Text('点击上传图片，最多3张')
               .fontSize(14)
               .fontColor('#999')
               .margin({ top: 8 })
@@ -53,6 +71,10 @@ export struct PostForm {
           .borderRadius(8)
           .border({ width: 1, color: '#E0E0E0', style: BorderStyle.Dashed })
           .justifyContent(FlexAlign.Center)
+        }
+        if (this.mediaList.length > 0) {
+          Text(`已选择 ${this.mediaList.length}/3 张，点击重新选择`)
+            .fontSize(12).fontColor('#999').margin({ top: 6 })
         }
       }
       .onClick(() => { this.onImagePick(); })
@@ -107,7 +129,31 @@ export struct PostForm {
         .borderRadius(8)
       }
 
-      // 丢失时间选择（仅 type='lost' 时显示）
+      // 类型选择
+      Column({ space: 8 }) {
+        Text('发布类型 *').fontSize(14).fontWeight(FontWeight.Bold)
+        Row() {
+          Row({ space: 4 }) {
+            Radio({ value: 'lost', group: 'type' })
+              .checked(this.type === 'lost')
+              .onChange(() => { this.type = 'lost' })
+            Text('失物招领').fontSize(14)
+          }
+          .layoutWeight(1)
+
+          Row({ space: 4 }) {
+            Radio({ value: 'found', group: 'type' })
+              .checked(this.type === 'found')
+              .onChange(() => { this.type = 'found' })
+            Text('寻物启事').fontSize(14)
+          }
+          .layoutWeight(1)
+        }
+        .width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+
+      // 丢失时间选择（仅失物招领时显示）
       if (this.type === 'lost') {
         Column({ space: 8 }) {
           Text('丢失时间 *').fontSize(14).fontWeight(FontWeight.Bold)
@@ -119,22 +165,41 @@ export struct PostForm {
           .backgroundColor($r('app.color.bg_input_area'))
           .borderRadius(10)
           .border({ width: 1, color: $r('app.color.border') })
-          .onClick(() => { this.showDatePicker = true })
+          .onClick(() => {
+            this.draftLostTime = this.lostTime > 0 ? this.lostTime : Date.now();
+            this.showDatePicker = true;
+          })
         }
         .alignItems(HorizontalAlign.Start)
 
         if (this.showDatePicker) {
-          DatePicker({
-            selected: this.lostTime > 0 ? new Date(this.lostTime) : new Date()
-          })
-            .onChange((result: DatePickerResult) => {
-              const year = result.year ?? new Date().getFullYear();
-              const month = result.month ?? new Date().getMonth();
-              const day = result.day ?? new Date().getDate();
-              const selectedDate = new Date(year, month, day);
-              this.lostTime = selectedDate.getTime();
-              this.showDatePicker = false;
+          Column({ space: 8 }) {
+            DatePicker({
+              selected: this.draftLostTime > 0 ? new Date(this.draftLostTime) : new Date()
             })
+              .onChange((result: DatePickerResult) => {
+                const year = result.year ?? new Date().getFullYear();
+                const month = result.month ?? new Date().getMonth();
+                const day = result.day ?? new Date().getDate();
+                const selectedDate = new Date(year, month, day);
+                const now = Date.now();
+                this.draftLostTime = Math.min(selectedDate.getTime(), now);
+              })
+            Row({ space: 12 }) {
+              Button('取消')
+                .layoutWeight(1).height(40)
+                .backgroundColor('#F5F5F5').fontColor('#666')
+                .onClick(() => { this.showDatePicker = false; })
+              Button('确定')
+                .layoutWeight(1).height(40)
+                .backgroundColor('#4E8FDF').fontColor('#FFFFFF')
+                .onClick(() => {
+                  this.lostTime = Math.min(this.draftLostTime > 0 ? this.draftLostTime : Date.now(), Date.now());
+                  this.showDatePicker = false;
+                })
+            }
+          }
+          .padding(12).backgroundColor('#F5F5F5').borderRadius(8)
         }
       }
 
@@ -153,30 +218,6 @@ export struct PostForm {
         TextInput({ placeholder: '请输入手机号或微信号', text: this.contact })
           .width('100%').height(48).fontSize(14)
           .onChange((value: string) => { this.contact = value })
-      }
-      .alignItems(HorizontalAlign.Start)
-
-      // 类型选择
-      Column({ space: 8 }) {
-        Text('类型 *').fontSize(14).fontWeight(FontWeight.Bold)
-        Row() {
-          Row({ space: 4 }) {
-            Radio({ value: 'lost', group: 'type' })
-              .checked(this.type === 'lost')
-              .onChange(() => { this.type = 'lost' })
-            Text('丢失').fontSize(14)
-          }
-          .layoutWeight(1)
-
-          Row({ space: 4 }) {
-            Radio({ value: 'found', group: 'type' })
-              .checked(this.type === 'found')
-              .onChange(() => { this.type = 'found' })
-            Text('招领').fontSize(14)
-          }
-          .layoutWeight(1)
-        }
-        .width('100%')
       }
       .alignItems(HorizontalAlign.Start)
 

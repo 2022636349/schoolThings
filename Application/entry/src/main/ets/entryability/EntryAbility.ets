@@ -1,14 +1,13 @@
 import { ConfigurationConstant, UIAbility, Want, AbilityConstant, common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window, router } from '@kit.ArkUI';
+import { window } from '@kit.ArkUI';
 import { AuthService } from '../services/AuthService';
 import { ChatService } from '../services/ChatService';
+import { ApiClient } from '../common/ApiClient';
 import { preferences } from '@kit.ArkData';
 import { notificationManager } from '@kit.NotificationKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { formProvider, formBindingData } from '@kit.FormKit';
-import { pushService } from '@kit.PushKit';
-import auth from '@hw-agconnect/auth';
 
 const HILOG_DOMAIN = 0x0000;
 const TAG = '[EntryAbility]';
@@ -18,7 +17,7 @@ export default class EntryAbility extends UIAbility {
   private bgPollTimer: number = -1;
   private suspendDelayId: number = -1;
 
-  // 冷启动：从 want 中提取卡片跳转参数
+  // 冷启动
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam) {
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
@@ -26,6 +25,8 @@ export default class EntryAbility extends UIAbility {
       hilog.error(HILOG_DOMAIN, TAG, 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
     hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onCreate');
+    // 注入全局 context 到 ApiClient，所有 service 都能用
+    ApiClient.setContext(this.context);
     // 冷启动：提取跳转参数（卡片或推送点击）
     this.parseLaunchWant(want);
   }
@@ -38,14 +39,8 @@ export default class EntryAbility extends UIAbility {
   async onWindowStageCreate(windowStage: window.WindowStage): Promise<void> {
     this.windowStage = windowStage;
     hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onWindowStageCreate');
-
-    // 先确保 AGC auth 初始化完成，再加载页面
-    try {
-      await auth.signInAnonymously();
-      hilog.info(HILOG_DOMAIN, TAG, 'AGC anonymous auth ready');
-    } catch (e) {
-      hilog.warn(HILOG_DOMAIN, TAG, 'AGC anonymous auth init: %{public}s', JSON.stringify(e));
-    }
+    // 确保 context 已注入
+    ApiClient.setContext(this.context);
 
     const isLoggedIn = AuthService.isLoggedIn(this.context);
     const startPage = isLoggedIn ? 'pages/HomePage' : 'pages/LoginPage';
@@ -55,10 +50,6 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(HILOG_DOMAIN, TAG, 'Succeeded in loading the content.');
-      // 登录状态下异步获取推送 token 并保存到云数据库
-      if (isLoggedIn) {
-        this.registerPushToken();
-      }
     });
 
     windowStage.getMainWindow().then((win) => {
@@ -66,17 +57,14 @@ export default class EntryAbility extends UIAbility {
     });
   }
 
-  // 热启动：应用已在运行，卡片/推送点击唤起
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(HILOG_DOMAIN, TAG, 'onNewWant called');
     this.parseLaunchWant(want);
   }
 
-  // 统一解析 want 中的跳转参数（卡片 targetPage / 推送 URI）
   private parseLaunchWant(want: Want): void {
     const isLoggedIn = AuthService.isLoggedIn(this.context);
 
-    // 1. 卡片参数：targetPage
     if (want.parameters) {
       const targetPage = want.parameters['targetPage'] as string;
       if (targetPage) {
@@ -88,7 +76,6 @@ export default class EntryAbility extends UIAbility {
       }
     }
 
-    // 2. 推送点击：URI 格式 findthings://push/message
     if (want.uri && want.uri.indexOf('findthings://push/message') >= 0) {
       if (isLoggedIn) {
         AppStorage.setOrCreate('widgetAction', 'message');
@@ -104,28 +91,13 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onForeground');
-    // 回到前台时：先立刻刷一次卡片和未读状态，再停止后台轮询
     this.bgPollOnce();
     this.clearBgPoll();
   }
 
   onBackground(): void {
     hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onBackground');
-    // 申请短时延迟挂起，在后台继续检测消息约3分钟
     this.startBgMessageCheck();
-  }
-
-  // ── AGC 推送 token 注册 ──
-  private async registerPushToken(): Promise<void> {
-    try {
-      const token = await pushService.getToken();
-      if (token) {
-        hilog.info(HILOG_DOMAIN, TAG, 'Push token obtained, saving...');
-        await AuthService.savePushToken(this.context, token);
-      }
-    } catch (e) {
-      hilog.warn(HILOG_DOMAIN, TAG, 'registerPushToken failed: %{public}s', JSON.stringify(e));
-    }
   }
 
   // ── 后台消息检测：应用退到后台后继续轮询一段时间 ──
@@ -133,7 +105,6 @@ export default class EntryAbility extends UIAbility {
   private startBgMessageCheck(): void {
     try {
       const delayInfo = backgroundTaskManager.requestSuspendDelay('message_check', () => {
-        // 即将被挂起，清理
         hilog.info(HILOG_DOMAIN, TAG, 'Suspend delay expired, stopping bg poll');
         this.clearBgPoll();
       });
@@ -143,7 +114,6 @@ export default class EntryAbility extends UIAbility {
       hilog.warn(HILOG_DOMAIN, TAG, 'requestSuspendDelay failed: %{public}s', JSON.stringify(e));
       return;
     }
-    // 立即检测一次，然后每 5 秒检测一次（推送到达后卡片最晚 5 秒刷新）
     this.bgPollOnce();
     this.bgPollTimer = setInterval(() => { this.bgPollOnce(); }, 5000);
   }
@@ -163,14 +133,14 @@ export default class EntryAbility extends UIAbility {
 
   private async bgPollOnce(): Promise<void> {
     try {
+      if (!AuthService.isLoggedIn(this.context)) return;
       const authStore = preferences.getPreferencesSync(this.context, { name: 'auth' });
-      const userId = authStore.getSync('account', '') as string;
+      const userId = authStore.getSync('userId', '') as string;
       if (!userId) return;
-      const msgStore = preferences.getPreferencesSync(this.context, { name: 'message_state' });
-      const lastReadTime = msgStore.getSync('lastReadTime', 0) as number;
-      if (lastReadTime === 0) return;
 
-      // 拉取每会话 lastReadMsgId 和 hidden 偏好
+      // 从本地偏好拉取 lastReadMsgId 和 hidden
+      const msgStore = preferences.getPreferencesSync(this.context, { name: 'message_state' });
+
       const sessions = await ChatService.getSessionsForUser(userId);
       const lastReadMsgIdMap: Record<string, number> = {};
       const hiddenMap: Record<string, number> = {};
@@ -180,12 +150,14 @@ export default class EntryAbility extends UIAbility {
       }
       const summary = await ChatService.getUnreadSummary(userId, lastReadMsgIdMap, hiddenMap);
       const hasUnread = summary.count > 0;
+      const cacheStore = preferences.getPreferencesSync(this.context, { name: 'message_state' });
+      const lastBgLatest = cacheStore.getSync('last_bg_latest', '') as string;
 
-      // 更新桌面卡片数据（真实总数 + 最新一条内容）
       this.pushWidgetData(summary.count, summary.latest);
 
-      // 有新消息 → 发本地通知
-      if (hasUnread) {
+      if (hasUnread && summary.latest && summary.latest !== lastBgLatest) {
+        cacheStore.putSync('last_bg_latest', summary.latest);
+        cacheStore.flush();
         const request: notificationManager.NotificationRequest = {
           id: 1002,
           content: {

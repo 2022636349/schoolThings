@@ -1,6 +1,7 @@
 import { router } from '@kit.ArkUI';
 import { promptAction, window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
+import { preferences } from '@kit.ArkData';
 import { AuthService } from '../services/AuthService';
 import { ChatService } from '../services/ChatService';
 import { UserService } from '../services/UserService';
@@ -24,6 +25,13 @@ interface ChatParams {
 interface Path {
   type: string;
   url: string;
+}
+
+interface ChatItemCardPayload {
+  itemId: number;
+  title: string;
+  type: string;
+  publisherName: string;
 }
 
 @Entry
@@ -60,6 +68,8 @@ export struct ChatPage {
 
   private scroller: Scroller = new Scroller();
   private pollTimer: number = -1;
+  private lastMsgId: number = 0;
+  private idlePollCount: number = 0;
 
   onParamsJsonChange(): void {
     if (this.paramsJson) {
@@ -80,15 +90,16 @@ export struct ChatPage {
       this.otherUserAvatar = p.otherUserAvatar;
       this.isInitiator = p.isInitiator === 'true';
       this.messages = [];
+      this.lastMsgId = 0;
+      this.idlePollCount = 0;
       this.iHaveConfirmed = false;
       this.isClaimed = false;
       this.fullItemText = '';
       this.fullItemType = '';
       if (this.itemId > 0) { this.loadItemDetails(); }
-      // 重启轮询
       if (this.pollTimer !== -1) { clearInterval(this.pollTimer); }
-      this.loadData();
-      this.pollTimer = setInterval(() => { this.loadData(); }, 3000);
+      this.loadData(true);
+      this.startPolling();
     } catch (e) {
       console.error('[ChatPage] applyParams failed:', e);
     }
@@ -136,8 +147,8 @@ export struct ChatPage {
         this.currentUserId = session.id;
       }
       if (!this.paramsJson) {
-        this.loadData();
-        this.pollTimer = setInterval(() => { this.loadData(); }, 3000);
+        this.loadData(true);
+        this.startPolling();
       }
     });
   }
@@ -147,7 +158,21 @@ export struct ChatPage {
       clearInterval(this.pollTimer);
       this.pollTimer = -1;
     }
+    this.markCurrentSessionRead();
     // 通知 MessagePage 刷新会话列表（新消息 & 未读数）
+    AppStorage.setOrCreate('messageListRefresh', Date.now());
+  }
+
+  private async markCurrentSessionRead(): Promise<void> {
+    if (!this.sessionId) return;
+    try {
+      const maxMsgId = await ChatService.getMaxMsgId(this.sessionId);
+      const store = preferences.getPreferencesSync(getContext(this), { name: 'message_state' });
+      store.putSync('lastReadMsgId_' + this.sessionId, maxMsgId);
+      store.putSync('lastReadTime', Date.now());
+      store.flush();
+    } catch (e) {
+    }
     AppStorage.setOrCreate('messageListRefresh', Date.now());
   }
 
@@ -186,10 +211,30 @@ export struct ChatPage {
     }
   }
 
-  async loadData(): Promise<void> {
+  private startPolling(): void {
+    if (this.pollTimer !== -1) {
+      clearInterval(this.pollTimer);
+    }
+    this.pollTimer = setInterval(() => {
+      this.loadData(false);
+    }, this.idlePollCount >= 3 ? 5000 : 2000);
+  }
+
+  async loadData(forceFull: boolean = false): Promise<void> {
     try {
-      const msgs = await ChatService.getMessages(this.sessionId);
-      this.messages = msgs;
+      const msgs = forceFull ? await ChatService.getMessages(this.sessionId) : await ChatService.getMessages(this.sessionId, this.lastMsgId);
+      if (forceFull) {
+        this.messages = msgs;
+      } else if (msgs.length > 0) {
+        this.messages = [...this.messages, ...msgs];
+      }
+      if (this.messages.length > 0) {
+        this.lastMsgId = this.messages[this.messages.length - 1].msgId;
+      }
+      this.idlePollCount = msgs.length > 0 ? 0 : this.idlePollCount + 1;
+      if (this.pollTimer === -1 || msgs.length > 0) {
+        this.startPolling();
+      }
       const session = await ChatService.getSession(this.sessionId);
       if (session) {
         if (this.isInitiator) {
@@ -236,11 +281,13 @@ export struct ChatPage {
         if (session) {
           await ChatService.markItemClaimed(session);
         }
+        await ChatService.sendSystemMessage(this.sessionId, '双方已确认，认领流程已完成');
         this.isClaimed = true;
         this.fullItemType = 'claimed';
         this.itemType = 'claimed';
         promptAction.showToast({ message: '认领完成！双方已确认' });
       } else {
+        await ChatService.sendSystemMessage(this.sessionId, '一方已确认认领，等待对方确认');
         promptAction.showToast({ message: '已确认，等待对方确认' });
       }
     } catch (error) {
@@ -443,6 +490,15 @@ export struct ChatPage {
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
+  private parseItemCardText(content: string): string {
+    try {
+      const payload = JSON.parse(content) as ChatItemCardPayload;
+      return `${payload.title} · ${payload.type === 'lost' ? '失物招领' : '寻物启事'} · ${payload.publisherName}`;
+    } catch (e) {
+      return content;
+    }
+  }
+
   @Builder
   MessageBubble(msg: ChatMessage) {
     Row({ space: 8 }) {
@@ -465,15 +521,41 @@ export struct ChatPage {
           Text(this.otherUserName || '对方')
             .fontSize(12).fontColor($r('app.color.text_caption')).alignSelf(ItemAlign.Start)
         }
-        Row() {
-          Text(msg.content)
-            .fontSize(15)
-            .fontColor(msg.senderId === this.currentUserId ? '#FFFFFF' : $r('app.color.text_primary'))
-            .backgroundColor(msg.senderId === this.currentUserId ? '#4E8FDF' : $r('app.color.bg_card'))
-            .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-            .borderRadius(18)
+        if (msg.messageType === 'system') {
+          Text(msg.content || '系统消息')
+            .fontSize(13)
+            .fontColor('#666666')
+            .backgroundColor('#F3F4F6')
+            .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+            .borderRadius(14)
             .constraintSize({ maxWidth: 240 })
-            .lineHeight(22)
+            .lineHeight(20)
+        } else if (msg.messageType === 'item-card') {
+          Column({ space: 6 }) {
+            Text('物品卡片')
+              .fontSize(11)
+              .fontColor('#4E8FDF')
+            Text(this.parseItemCardText(msg.content))
+              .fontSize(14)
+              .fontColor($r('app.color.text_primary'))
+              .maxLines(3)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+          .backgroundColor('#EBF3FF')
+          .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+          .borderRadius(16)
+          .constraintSize({ maxWidth: 240 })
+        } else {
+          Row() {
+            Text(msg.content)
+              .fontSize(15)
+              .fontColor(msg.senderId === this.currentUserId ? '#FFFFFF' : $r('app.color.text_primary'))
+              .backgroundColor(msg.senderId === this.currentUserId ? '#4E8FDF' : $r('app.color.bg_card'))
+              .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+              .borderRadius(18)
+              .constraintSize({ maxWidth: 240 })
+              .lineHeight(22)
+          }
         }
         Text(this.formatMsgTime(msg.sendTime))
           .fontSize(11).fontColor($r('app.color.text_disabled'))

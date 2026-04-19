@@ -1,68 +1,103 @@
-import { cloudDatabase } from '@kit.CloudFoundationKit';
 import { common } from '@kit.AbilityKit';
-import { UserInfo } from '../model/User';
-import { AuthService } from './AuthService';
-import { UploadService } from './UploadService';
-
-const ZONE_NAME = 'User';
+import { fileIo } from '@kit.CoreFileKit';
+import { util } from '@kit.ArkTS';
+import { ApiClient } from '../common/ApiClient';
+import { Session } from '../common/Session';
 
 export interface PublisherInfo {
   name: string;
   avatar: string;
 }
 
+interface PublisherResp {
+  userId: string;
+  studentNo: string;
+  name: string | null;
+  avatar: string | null;
+}
+
+interface PublisherBatchQuery extends Record<string, string | number | boolean | null | undefined> {
+  ids: string;
+}
+
+interface AvatarBody {
+  url: string;
+}
+
+interface ProfileUpdateBody {
+  nickname: string;
+  phone: string;
+}
+
 export class UserService {
   /**
-   * 批量获取用户信息（Name + Avatar），用于卡片展示发布者信息
-   * @param ids 需要查询的用户 ID 数组（去重后传入）
-   * @returns Record<id, PublisherInfo>
+   * 批量按 userId 查询发布者信息（卡片展示用）
+   * @param ids userId 数组（已去重）
    */
   static async getPublisherInfoByIds(ids: string[]): Promise<Record<string, PublisherInfo>> {
     const result: Record<string, PublisherInfo> = {};
-    if (ids.length === 0) return result;
+    if (!ids || ids.length === 0) return result;
     try {
-      const db = cloudDatabase.zone(ZONE_NAME);
-      const query = new cloudDatabase.DatabaseQuery(UserInfo);
-      query.in('ID', ids);
-      const users = (await db.query(query)) as UserInfo[];
-      for (const user of users) {
-        result[user.ID] = {
-          name: user.Name || user.ID,
-          avatar: user.Avatar ?? ''
+      const csv = ids.join(',');
+      const list = await ApiClient.get<PublisherResp[]>('/user/batch', { ids: csv } as PublisherBatchQuery);
+      if (!list) return result;
+      for (const p of list) {
+        result[p.userId] = {
+          name: p.name || p.studentNo || p.userId,
+          avatar: p.avatar || ''
         };
       }
-    } catch (error) {
-      console.error('[UserService] 批量获取用户信息失败:', error);
+    } catch (e) {
+      console.error('[UserService] getPublisherInfoByIds failed:', e);
     }
     return result;
   }
 
+  static async updateProfile(context: common.UIAbilityContext, nickname: string, phone: string): Promise<void> {
+    const body: ProfileUpdateBody = { nickname: nickname, phone: phone };
+    await ApiClient.put<string>('/user/profile', body, context);
+    Session.updateProfile(context, nickname, null);
+  }
+
   /**
-   * 上传头像图片并将下载链接写入 UserInfo.Avatar 字段
-   * @param context UIAbilityContext
-   * @param localUri picker 返回的图片 URI
-   * @returns 头像下载链接
+   * 上传头像文件并把 URL 写回后端
+   * @returns 头像公开 URL
    */
-  static async uploadAvatar(
-    context: common.UIAbilityContext,
-    localUri: string
-  ): Promise<string> {
-    const session = await AuthService.getSession(context);
-    const userId = session?.id;
-    if (!userId) throw new Error('用户未登录');
-
-    // 文件名含时间戳，每次上传都是新路径 → 新 URL → Image 不会命中旧缓存
-    const cloudPath = `avatars/${userId}_${Date.now()}.jpg`;
-    const url = await UploadService.uploadFile(context, localUri, cloudPath);
-
-    const db = cloudDatabase.zone(ZONE_NAME);
-    const query = new cloudDatabase.DatabaseQuery(UserInfo).equalTo('ID', userId);
-    const users = (await db.query(query)) as UserInfo[];
-    if (users && users.length > 0) {
-      const user = users[0];
-      user.Avatar = url;
-      await db.upsert(user);
+  static async uploadAvatar(context: common.UIAbilityContext, localUri: string): Promise<string> {
+    if (!Session.isLoggedIn(context)) {
+      throw new Error('用户未登录');
     }
-    return url;
+
+    // 1. picker URI → 复制到 cacheDir → 读成 base64
+    const fileName = `avatar_${Date.now()}.jpg`;
+    const cacheFilePath = `${context.cacheDir}/${fileName}`;
+    const srcFile = fileIo.openSync(localUri, fileIo.OpenMode.READ_ONLY);
+    const dstFile = fileIo.openSync(cacheFilePath, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
+    fileIo.copyFileSync(srcFile.fd, dstFile.fd);
+    fileIo.closeSync(srcFile);
+    fileIo.closeSync(dstFile);
+
+    try {
+      const stat = fileIo.statSync(cacheFilePath);
+      const size = stat.size;
+      const buf = new ArrayBuffer(size);
+      const readFile = fileIo.openSync(cacheFilePath, fileIo.OpenMode.READ_ONLY);
+      fileIo.readSync(readFile.fd, buf);
+      fileIo.closeSync(readFile);
+
+      const base64 = new util.Base64Helper().encodeToStringSync(new Uint8Array(buf));
+      const url = await ApiClient.uploadBase64('avatars', fileName, base64, 'image/jpeg', context);
+
+      // 把 URL 写回后端用户信息
+      const body: AvatarBody = { url: url };
+      await ApiClient.post<string>('/user/avatar', body, context);
+
+      // 本地缓存同步
+      Session.updateProfile(context, null, url);
+      Session.saveAvatarVersion(context, String(Date.now()));
+      return url;
+    } finally {
+      fileIo.unlink(cacheFilePath).catch(() => {});
+    }
   }
 }

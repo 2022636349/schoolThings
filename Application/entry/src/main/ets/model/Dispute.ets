@@ -1,31 +1,14 @@
-import { cloudDatabase } from '@kit.CloudFoundationKit';
-
 /**
- * 冒领异议记录
+ * 冒领异议记录（前端纯数据模型）
  * imageUrls 是 JSON 字符串数组，例如 '["url1","url2"]'
  * status: pending | handled
  */
-export class Dispute extends cloudDatabase.DatabaseObject {
-  public disputeId: number;
-  public itemId: number;
-  public userId: string;
-  public description: string;
-  public imageUrls: string;
-  public status: string;
-  public createTime: Date | null;
-
-  public naturalbase_ClassName(): string {
-    return 'Dispute';
-  }
-
-  constructor() {
-    super();
-    this.disputeId = 0;
-    this.itemId = 0;
-    this.userId = '';
-    this.description = '';
-    this.imageUrls = '[]';
-    this.status = 'pending';
-    this.createTime = null;
-  }
+export class Dispute {
+  public disputeId: number = 0;
+  public itemId: number = 0;
+  public userId: string = '';
+  public description: string = '';
+  public imageUrls: string = '[]';
+  public status: string = 'pending';
+  public createTime: Date | null = null;
 }

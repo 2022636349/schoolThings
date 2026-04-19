@@ -82,7 +82,11 @@ struct HomePage {
       this.saveLastReadTime();
     }
     if (this.currentUserId) {
-      this.pollUnread();
+      this.pollUnread(false);
+    }
+    const pendingRefresh = AppStorage.get<number>('messageListRefresh') || 0;
+    if (pendingRefresh > 0 && this.currentUserId) {
+      this.pollUnread(false);
     }
     const pendingAction = AppStorage.get<string>('widgetAction');
     if (pendingAction && pendingAction.length > 0) {
@@ -136,7 +140,7 @@ struct HomePage {
     }
   }
 
-  async pollUnread(): Promise<void> {
+  async pollUnread(showNotification: boolean = true): Promise<void> {
     if (!this.currentUserId) return;
     try {
       const store = preferences.getPreferencesSync(getContext(this), { name: 'message_state' });
@@ -161,7 +165,7 @@ struct HomePage {
       if (hasUnread) {
         if (!this.hasUnreadMessage) {
           this.hasUnreadMessage = true;
-          if (this.currentIndex !== this.MESSAGE_TAB_INDEX) {
+          if (showNotification && this.currentIndex !== this.MESSAGE_TAB_INDEX) {
             this.showMessageNotification(summary.latest);
           }
         }
@@ -311,7 +315,7 @@ struct HomePage {
           FrontPage({ topHeight: this.topHeight, bottomHeight: this.bottomHeight })
         }
         TabContent() {
-          HallPage({ topHeight: this.topHeight, bottomHeight: this.bottomHeight })
+          HallPage({ topHeight: this.topHeight, bottomHeight: this.bottomHeight, refreshTrigger: this.mainPageRefreshTrigger })
         }
         TabContent() {
           MessagePage({ topHeight: this.topHeight })
@@ -343,7 +347,7 @@ struct HomePage {
         if (this.currentIndex === 0) {
           FrontPage({ topHeight: this.topHeight, bottomHeight: this.bottomHeight })
         } else {
-          HallPage({ topHeight: this.topHeight, bottomHeight: this.bottomHeight })
+          HallPage({ topHeight: this.topHeight, bottomHeight: this.bottomHeight, refreshTrigger: this.mainPageRefreshTrigger })
         }
 
         // 导航胶囊（含 + 按钮）

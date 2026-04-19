@@ -61,6 +61,52 @@ struct ChangePasswordDialog {
   }
 }
 
+@CustomDialog
+struct EditProfileDialog {
+  controller: CustomDialogController = new CustomDialogController({ builder: EditProfileDialog() });
+  @State nickname: string = '';
+  @State phone: string = '';
+  onSubmit: (nickname: string, phone: string) => void = () => {};
+
+  build() {
+    Column({ space: 16 }) {
+      Text('编辑资料')
+        .fontSize(18).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary'))
+        .width('100%').textAlign(TextAlign.Center)
+
+      TextInput({ placeholder: '昵称', text: this.nickname })
+        .fontSize(15).height(48)
+        .backgroundColor($r('app.color.bg_secondary')).borderRadius(10)
+        .onChange((v: string) => { this.nickname = v; })
+
+      TextInput({ placeholder: '手机号', text: this.phone })
+        .type(InputType.PhoneNumber)
+        .fontSize(15).height(48)
+        .backgroundColor($r('app.color.bg_secondary')).borderRadius(10)
+        .onChange((v: string) => { this.phone = v; })
+
+      Row({ space: 12 }) {
+        Button('取消')
+          .layoutWeight(1).height(46)
+          .fontSize(15).fontColor($r('app.color.text_tertiary'))
+          .backgroundColor($r('app.color.bg_input')).borderRadius(23)
+          .onClick(() => { this.controller.close(); })
+
+        Button('保存')
+          .layoutWeight(1).height(46)
+          .fontSize(15).fontColor('#FFFFFF')
+          .backgroundColor('#4E8FDF').borderRadius(23)
+          .onClick(() => { this.onSubmit(this.nickname, this.phone); })
+      }
+      .width('100%')
+    }
+    .padding(24)
+    .borderRadius(20)
+    .backgroundColor($r('app.color.bg_card'))
+    .width('85%')
+  }
+}
+
 // ────── 主页面 ──────
 interface MenuItemConfig {
   icon: string | Resource;
@@ -76,10 +122,27 @@ export struct PersonalPage {
   @State name: string = '未登录';
   @State published: number = 0;
   @State claimed: number = 0;
+  @State heartValue: number = 0;
+  @State fraudCount: number = 0;
+  @State phone: string = '';
+  @State editProfileNickname: string = '';
+  @State editProfilePhone: string = '';
   @State avatarUrl: string = '';
   @State isUploadingAvatar: boolean = false;
   @State isRefreshing: boolean = false;
   @Prop topHeight: number = 0;
+
+  private editProfileController: CustomDialogController = new CustomDialogController({
+    builder: EditProfileDialog({
+      nickname: this.editProfileNickname,
+      phone: this.editProfilePhone,
+      onSubmit: (nickname: string, phone: string) => {
+        this.doUpdateProfile(nickname, phone);
+      }
+    }),
+    alignment: DialogAlignment.Center,
+    cornerRadius: 20
+  });
 
   private changePwdController: CustomDialogController = new CustomDialogController({
     builder: ChangePasswordDialog({
@@ -98,10 +161,15 @@ export struct PersonalPage {
   async loadProfile(): Promise<void> {
     const session = await AuthService.getSession(getContext(this) as common.UIAbilityContext);
     if (session) {
-      this.studentId = session.id;
+      this.studentId = session.studentNo || session.id;
       this.name = session.name;
       this.published = session.published;
       this.claimed = session.claimed;
+      this.heartValue = session.heartValue;
+      this.fraudCount = session.fraudCount;
+      this.phone = session.phoneMasked || '';
+      this.editProfileNickname = this.name;
+      this.editProfilePhone = this.phone;
       this.avatarUrl = session.avatar ?? '';
     }
   }
@@ -122,18 +190,41 @@ export struct PersonalPage {
 
       this.isUploadingAvatar = true;
       const ctx = getContext(this) as common.UIAbilityContext;
-      const url = await UserService.uploadAvatar(ctx, result.photoUris[0]);
-      this.avatarUrl = url;
+      await UserService.uploadAvatar(ctx, result.photoUris[0]);
+      await this.loadProfile();
       promptAction.showToast({ message: '头像更新成功' });
       // 触发下拉刷新动画，完成后自动收起
       this.isRefreshing = true;
-      await this.loadProfile();
       this.isRefreshing = false;
     } catch (error) {
       console.error('[PersonalPage] 头像上传失败:', error);
       promptAction.showToast({ message: '头像上传失败，请重试' });
     } finally {
       this.isUploadingAvatar = false;
+    }
+  }
+
+  async doUpdateProfile(nickname: string, phone: string): Promise<void> {
+    const nextNickname = nickname.trim();
+    const nextPhone = phone.trim();
+    if (!nextNickname) {
+      promptAction.showToast({ message: '昵称不能为空' });
+      return;
+    }
+    if (nextPhone && !/^1[3-9]\d{9}$/.test(nextPhone)) {
+      promptAction.showToast({ message: '手机号格式不正确' });
+      return;
+    }
+    try {
+      await UserService.updateProfile(getContext(this) as common.UIAbilityContext, nextNickname, nextPhone);
+      this.editProfileController.close();
+      this.name = nextNickname;
+      this.phone = nextPhone;
+      this.editProfileNickname = nextNickname;
+      this.editProfilePhone = nextPhone;
+      promptAction.showToast({ message: '资料更新成功' });
+    } catch (e) {
+      promptAction.showToast({ message: '资料更新失败，请稍后重试' });
     }
   }
 
@@ -170,7 +261,7 @@ export struct PersonalPage {
   showAboutUs(): void {
     AlertDialog.show({
       title: '关于我们',
-      message: '校园失物招领\n版本 1.0.0\n\n致力于帮助同学们快速找回失物，让校园更温暖、更有爱。\n\n如有问题请联系管理员。',
+      message: '校园失物招领\n版本 1.0.0\n\n致力于帮助同学们快速找回失物，让校园更温暖、更有爱。\n\n隐私政策：当前版本为占位说明，后续将补充正式链接。\n用户协议：当前版本为占位说明，后续将补充正式链接。\n\n如有问题请联系管理员。',
       confirm: {
         value: '我知道了',
         action: () => {}
@@ -258,6 +349,10 @@ export struct PersonalPage {
                     .fontSize(22).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary'))
                   Text(`学号：${this.studentId}`)
                     .fontSize(14).fontColor($r('app.color.text_caption'))
+                  if (this.phone) {
+                    Text(`手机号：${this.phone}`)
+                      .fontSize(13).fontColor($r('app.color.text_caption'))
+                  }
                 }
                 .alignItems(HorizontalAlign.Start).layoutWeight(1)
               }
@@ -282,6 +377,25 @@ export struct PersonalPage {
                 }.layoutWeight(1).alignItems(HorizontalAlign.Center)
               }
               .width('100%').padding({ left: 12, right: 12 })
+
+              Divider().color($r('app.color.divider')).opacity(0.5)
+
+              Row() {
+                Column({ space: 6 }) {
+                  Text(this.heartValue.toString())
+                    .fontSize(22).fontWeight(FontWeight.Bold).fontColor('#4E8FDF')
+                  Text('热心值').fontSize(12).fontColor($r('app.color.text_caption'))
+                }.layoutWeight(1).alignItems(HorizontalAlign.Center)
+
+                Column().width(1).height(36).backgroundColor('#E5E5E5').opacity(0.5)
+
+                Column({ space: 6 }) {
+                  Text(this.fraudCount.toString())
+                    .fontSize(22).fontWeight(FontWeight.Bold).fontColor(this.fraudCount > 0 ? '#FF9500' : '#4CAF50')
+                  Text('异常次数').fontSize(12).fontColor($r('app.color.text_caption'))
+                }.layoutWeight(1).alignItems(HorizontalAlign.Center)
+              }
+              .width('100%').padding({ left: 12, right: 12, top: 14 })
             }
             .width('100%').padding(20)
             .backgroundColor($r('app.color.bg_card')).borderRadius(16)
@@ -303,6 +417,43 @@ export struct PersonalPage {
               })
               Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56 ,right:56})
               this.OptimizedMenuItem({
+                icon: $r('app.media.frontpage'),
+                label: '我的收藏',
+                action: (): void => {
+                  router.pushUrl({ url: 'pages/MyLikedPage' });
+                }
+              })
+              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56 ,right:56})
+              this.OptimizedMenuItem({
+                icon: $r('app.media.my'),
+                label: '编辑资料',
+                action: (): void => {
+                  this.editProfileNickname = this.name;
+                  this.editProfilePhone = this.phone;
+                  this.editProfileController.open();
+                }
+              })
+              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56 ,right:56})
+              this.OptimizedMenuItem({
+                icon: $r('app.media.message'),
+                label: '我的认领申请',
+                action: (): void => {
+                  if (AppStorage.get<boolean>('isTabletMode') === true) {
+                    AppStorage.setOrCreate('tabletPrevRightType', 'personal');
+                    AppStorage.setOrCreate('tabletRightType', 'myClaimed');
+                  } else {
+                    router.pushUrl({ url: 'pages/MyClaimedPage' });
+                  }
+                }
+              })
+              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56,right:56 })
+              this.OptimizedMenuItem({
+                icon: $r('app.media.bill'),
+                label: '我的举报',
+                action: (): void => { router.pushUrl({ url: 'pages/MyReportsPage' }); }
+              })
+              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56,right:56 })
+              this.OptimizedMenuItem({
                 icon: $r('app.media.key'),
                 label: '修改密码',
                 action: (): void => { this.changePwdController.open(); }
@@ -312,6 +463,12 @@ export struct PersonalPage {
                 icon: $r('app.media.bill'),
                 label: '关于我们',
                 action: (): void => { this.showAboutUs(); }
+              })
+              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56 ,right:56})
+              this.OptimizedMenuItem({
+                icon: $r('app.media.message'),
+                label: '意见反馈',
+                action: (): void => { router.pushUrl({ url: 'pages/FeedbackPage' }); }
               })
               Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56 ,right:56})
               this.OptimizedMenuItem({

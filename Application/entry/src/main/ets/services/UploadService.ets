@@ -1,29 +1,34 @@
-import { cloudStorage } from '@kit.CloudFoundationKit';
-import { fileIo } from '@kit.CoreFileKit';
-import { BusinessError, request } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
+import { fileIo } from '@kit.CoreFileKit';
+import { util } from '@kit.ArkTS';
+import { ApiClient } from '../common/ApiClient';
 
+interface UploadUrlQuery extends Record<string, string | number | boolean | null | undefined> {
+  path: string;
+}
+
+/**
+ * 文件上传封装：picker URI → base64 → 后端 /upload/base64 → 公开 URL
+ */
 export class UploadService {
-  private static readonly bucket: cloudStorage.StorageBucket = cloudStorage.bucket();
-
-  static async getDownloadURL(cloudPath: string): Promise<string> {
-    return UploadService.bucket.getDownloadURL(cloudPath);
-  }
-
   /**
-   * 将 picker URI 上传到云存储，返回公开下载链接
+   * 上传文件到后端
    * @param context  UIAbilityContext
-   * @param localUri picker 返回的 URI
-   * @param cloudPath 云存储路径，如 "avatars/userId.jpg"
+   * @param localUri picker / cacheDir 返回的 URI 或路径
+   * @param cloudPath 逻辑上的目标路径（如 "avatars/avatar.jpg" 或 "items/123/0.jpg"）
+   *                  仅取前缀目录用作 MinIO 分组，文件名会被服务端替换为 uuid 避免冲突
    */
   static async uploadFile(
     context: common.UIAbilityContext,
     localUri: string,
     cloudPath: string
   ): Promise<string> {
-    // 1. picker URI 是临时授权，先复制到 cacheDir 落盘
-    const fileName = cloudPath.replace(/\//g, '_');
-    const cacheFilePath = `${context.cacheDir}/${fileName}`;
+    // 1. picker URI 是临时授权，先 copy 到 cacheDir 落盘读字节
+    const lastSlash = cloudPath.lastIndexOf('/');
+    const prefix = lastSlash > 0 ? cloudPath.substring(0, lastSlash) : 'common';
+    const origName = lastSlash > 0 ? cloudPath.substring(lastSlash + 1) : cloudPath;
+    const safeName = cloudPath.replace(/\//g, '_');
+    const cacheFilePath = `${context.cacheDir}/${safeName}`;
 
     const srcFile = fileIo.openSync(localUri, fileIo.OpenMode.READ_ONLY);
     const dstFile = fileIo.openSync(cacheFilePath, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
@@ -31,35 +36,51 @@ export class UploadService {
     fileIo.closeSync(srcFile);
     fileIo.closeSync(dstFile);
 
-    // 2. 上传到云存储，完成后获取下载链接
-    return new Promise<string>((resolve, reject) => {
-      UploadService.bucket.uploadFile(context, {
-        localPath: cacheFilePath,
-        cloudPath: cloudPath
-      }).then((task: request.agent.Task) => {
-        task.on('completed', () => {
-          UploadService.bucket.getDownloadURL(cloudPath).then((url: string) => {
-            fileIo.unlink(cacheFilePath).catch(() => {});
-            resolve(url);
-          }).catch((err: BusinessError) => {
-            fileIo.unlink(cacheFilePath).catch(() => {});
-            reject(err);
-          });
-        });
-        task.on('failed', (progress) => {
-          fileIo.unlink(cacheFilePath).catch(() => {});
-          const detail = JSON.stringify(progress);
-          console.error('[UploadService] 上传失败:', detail);
-          reject(new Error(`上传失败: ${detail}`));
-        });
-        task.start().catch((err: BusinessError) => {
-          fileIo.unlink(cacheFilePath).catch(() => {});
-          reject(err);
-        });
-      }).catch((err: BusinessError) => {
-        fileIo.unlink(cacheFilePath).catch(() => {});
-        reject(err);
-      });
-    });
+    try {
+      // 2. 读成 ArrayBuffer → base64
+      const stat = fileIo.statSync(cacheFilePath);
+      const size = stat.size;
+      const buf = new ArrayBuffer(size);
+      const readFile = fileIo.openSync(cacheFilePath, fileIo.OpenMode.READ_ONLY);
+      fileIo.readSync(readFile.fd, buf);
+      fileIo.closeSync(readFile);
+
+      const base64 = new util.Base64Helper().encodeToStringSync(new Uint8Array(buf));
+      const contentType = UploadService.guessContentType(origName);
+      const url = await ApiClient.uploadBase64(prefix, origName, base64, contentType, context);
+      return url;
+    } finally {
+      fileIo.unlink(cacheFilePath).catch(() => {});
+    }
+  }
+
+  /**
+   * 旧代码兼容：以前存 objectPath 在数据库里，这里提供一个 path→url 的转换。
+   * 由于后端现在统一返回完整 URL，这里直接返回原值。
+   */
+  static async getDownloadURL(cloudPathOrUrl: string): Promise<string> {
+    if (!cloudPathOrUrl) return '';
+    if (cloudPathOrUrl.startsWith('http://') || cloudPathOrUrl.startsWith('https://')) {
+      return cloudPathOrUrl;
+    }
+    // 走后端兜底接口解析
+    try {
+      const url = await ApiClient.get<string>('/upload/url', { path: cloudPathOrUrl } as UploadUrlQuery);
+      return url || '';
+    } catch (e) {
+      console.warn('[UploadService] getDownloadURL failed:', e);
+      return '';
+    }
+  }
+
+  private static guessContentType(name: string): string {
+    const lower = name.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    return 'application/octet-stream';
   }
 }

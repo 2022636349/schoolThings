@@ -1,5 +1,6 @@
 import { ItemCard, MediaItem } from '../services/ItemService'
 import { router } from '@kit.ArkUI';
+import { deriveStatus, getStatusLabel, getStatusColor, getStatusBg } from '../model/ItemCategory';
 
 @Component
 export struct ItemCardView {
@@ -136,6 +137,10 @@ export struct ItemCardView {
       .onClick(() => { this.onMediaClick(0) })
   }
 
+  private getDisplayStatus() {
+    return deriveStatus(this.item.type, this.item.status);
+  }
+
   build() {
     Column() {
       Row() {
@@ -169,9 +174,9 @@ export struct ItemCardView {
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
 
-            Text(this.item.type === 'lost' ? '寻物' : this.item.type === 'find' ? '招领' : '已认领')
-              .fontColor(this.item.type === 'lost' ? '#E07B39' : this.item.type === 'find' ? '#4E8FDF' : '#4CAF50')
-              .backgroundColor(this.item.type === 'lost' ? $r('app.color.badge_lost_bg') : this.item.type === 'find' ? $r('app.color.badge_find_bg') : $r('app.color.badge_claimed_bg'))
+            Text(getStatusLabel(this.item.type, this.getDisplayStatus()))
+              .fontColor(getStatusColor(this.getDisplayStatus()))
+              .backgroundColor(getStatusBg(this.getDisplayStatus()))
               .fontSize(11)
               .padding({ left: 6, right: 6, top: 2, bottom: 2 })
               .borderRadius(4)
@@ -222,6 +227,11 @@ export struct ItemCardView {
       p['publisherName'] = this.item.publisherName;
       p['publisherAvatar'] = this.item.publisherAvatar;
       p['mediaList'] = JSON.stringify(this.item.mediaList);
+      p['category'] = this.item.category;
+      p['likeCount'] = this.item.likeCount;
+      p['status'] = this.item.status;
+      p['claimedBy'] = this.item.claimedBy || '';
+      p['lostTime'] = this.item.lostTime;
       if (AppStorage.get<boolean>('isTabletMode') === true) {
         const cur = AppStorage.get<string>('tabletRightType') || 'none';
         AppStorage.setOrCreate('tabletPrevRightType', cur);

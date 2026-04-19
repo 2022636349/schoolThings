@@ -1,12 +1,9 @@
 import { router } from '@kit.ArkUI';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
-import { cloudDatabase } from '@kit.CloudFoundationKit';
 import { AuthService, SessionInfo } from '../services/AuthService';
 import { ItemCardView } from './Card';
-import { ItemCard, MediaItem, formatTime } from '../services/ItemService';
-import { ItemInfo } from '../model/ItemCard';
-import { UploadService } from '../services/UploadService';
+import { ItemCard, ItemService } from '../services/ItemService';
 
 @Entry
 @Component
@@ -33,44 +30,18 @@ export struct MyPostsPage {
     });
   }
 
-  async loadMyPosts(userId: string): Promise<void> {
+  onPageShow(): void {
+    const refreshKey = AppStorage.get<number>('myPostsRefresh') || 0;
+    if (refreshKey > 0 && this.currentUser) {
+      AppStorage.setOrCreate('myPostsRefresh', 0);
+      this.loadMyPosts(this.currentUser.id);
+    }
+  }
+
+  async loadMyPosts(_userId: string): Promise<void> {
     this.isLoading = true;
     try {
-      const db = cloudDatabase.zone('User');
-      const q = new cloudDatabase.DatabaseQuery(ItemInfo)
-        .equalTo('publishId', userId)
-        .orderByDesc('itemId');
-      const result = (await db.query(q)) as ItemInfo[];
-      const itemList = result || [];
-      const cards: ItemCard[] = [];
-      for (const info of itemList) {
-        let mediaList: MediaItem[] = [];
-        try {
-          const rawMedia = JSON.parse(info.resource) as MediaItem[];
-          const resolvedMedia: MediaItem[] = [];
-          for (const m of rawMedia) {
-            let url = m.url;
-            if (url && !url.startsWith('http')) {
-              url = await UploadService.getDownloadURL(url);
-            }
-            resolvedMedia.push({ type: m.type, url });
-          }
-          mediaList = resolvedMedia;
-        } catch (e) {
-          mediaList = [];
-        }
-        cards.push({
-          itemId: info.itemId,
-          type: info.type,
-          text: info.text,
-          publishTime: info.publishTime ? formatTime(new Date(info.publishTime)) : '',
-          publishId: info.publishId,
-          publisherName: this.currentUser?.name || info.publishId,
-          publisherAvatar: this.currentUser?.avatar || '',
-          mediaList: mediaList
-        } as ItemCard);
-      }
-      this.items = cards;
+      this.items = await ItemService.listMine();
     } catch (e) {
       console.error('[MyPostsPage] 加载失败:', e);
     } finally {

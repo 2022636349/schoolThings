@@ -8,9 +8,27 @@ import { PostForm } from '../components/PostForm';
  * 发布物品页面（Phase 3 集成新的 PostForm）
  * 字段：图片 + 名称 + 描述 + 分类 + 丢失时间 + 地点 + 联系方式 + 类型
  */
+interface EditPostParams {
+  itemId: number;
+  type: string;
+  text: string;
+  publishTime: string;
+  publishId: string;
+  publisherName: string;
+  publisherAvatar: string;
+  mediaList: string;
+  category: string;
+  likeCount: number;
+  status: string;
+  claimedBy: string | null;
+  lostTime: number;
+}
+
 @Entry
 @Component
 struct PostPage {
+  @State itemId: number = 0;
+  @State isEditMode: boolean = false;
   @State title: string = '';
   @State description: string = '';
   @State category: string = '';
@@ -29,19 +47,39 @@ struct PostPage {
       this.topHeight = px2vp(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height);
       this.bottomHeight = px2vp(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR).bottomRect.height);
     });
+    const params = router.getParams() as EditPostParams;
+    if (params && params.itemId) {
+      this.isEditMode = true;
+      this.itemId = params.itemId;
+      this.type = params.type || 'lost';
+      this.description = params.text || '';
+      this.category = params.category || '';
+      this.lostTime = params.lostTime || 0;
+      try {
+        const media = JSON.parse(params.mediaList || '[]') as MediaItem[];
+        this.mediaList = media;
+        this.imageUrl = media.length > 0 ? media[0].url : '';
+      } catch (e) {
+        this.mediaList = [];
+      }
+    }
   }
 
   private async handleImagePick(): Promise<void> {
     try {
       const photoSelectOptions = new picker.PhotoSelectOptions();
       photoSelectOptions.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE;
-      photoSelectOptions.maxSelectNumber = 1;
+      photoSelectOptions.maxSelectNumber = 3;
       const photoPicker = new picker.PhotoViewPicker();
       const result = await photoPicker.select(photoSelectOptions);
       if (result.photoUris && result.photoUris.length > 0) {
         this.imageUrl = result.photoUris[0];
-        // 同时加入 mediaList
-        this.mediaList = [{ type: 'image', url: this.imageUrl }];
+        const selected = result.photoUris.slice(0, 3);
+        const nextMedia: MediaItem[] = [];
+        for (const uri of selected) {
+          nextMedia.push({ type: 'image', url: uri });
+        }
+        this.mediaList = nextMedia;
       }
     } catch (error) {
       promptAction.showToast({ message: '选择图片失败' });
@@ -77,15 +115,34 @@ struct PostPage {
 
     this.isSubmitting = true;
     try {
-      // 调用 PostService.publish，参数需要扩展
-      await PostService.publish(
-        getContext(this) as common.UIAbilityContext,
-        this.type,
-        this.description.trim(),
-        this.location.trim(),
-        this.mediaList
-      );
-      promptAction.showToast({ message: '发布成功' });
+      if (this.isEditMode && this.itemId > 0) {
+        await PostService.update(
+          getContext(this) as common.UIAbilityContext,
+          this.itemId,
+          this.type,
+          this.title.trim(),
+          this.description.trim(),
+          this.location.trim(),
+          this.category,
+          this.contact.trim(),
+          this.lostTime,
+          this.mediaList
+        );
+      } else {
+        await PostService.publishFull(
+          getContext(this) as common.UIAbilityContext,
+          this.type,
+          this.title.trim(),
+          this.description.trim(),
+          this.location.trim(),
+          this.category,
+          this.contact.trim(),
+          this.lostTime,
+          this.mediaList
+        );
+      }
+      promptAction.showToast({ message: this.isEditMode ? '更新成功' : '发布成功' });
+      AppStorage.setOrCreate('myPostsRefresh', Date.now());
       AppStorage.setOrCreate('homeNeedRefresh', true);
       router.back();
     } catch (error) {
@@ -109,7 +166,7 @@ struct PostPage {
         .justifyContent(FlexAlign.Center)
         .onClick(() => { router.back() })
 
-        Text('发布物品')
+        Text(this.isEditMode ? '编辑物品' : '发布物品')
           .fontSize(17).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
           .layoutWeight(1).textAlign(TextAlign.Center)
@@ -131,6 +188,7 @@ struct PostPage {
           contact: $contact,
           type: $type,
           imageUrl: $imageUrl,
+          mediaList: $mediaList,
           onImagePick: () => { this.handleImagePick() },
           onSubmit: () => { this.handleSubmit() }
         })

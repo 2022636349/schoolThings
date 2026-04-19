@@ -128,6 +128,16 @@ struct LoginPage {
             })
             .onClick(() => { this.handleLogin(); })
 
+          Text('忘记密码？')
+            .fontSize(14)
+            .fontColor(Color.White)
+            .margin({ top: 14 })
+            .textShadow({ radius: 1, color: Color.Black })
+            .onClick(() => {
+              this.errorMessage = '';
+              router.pushUrl({ url: 'pages/ResetPasswordPage' });
+            })
+
           // 注册引导
           Text('没有账号？立即注册')
             .fontSize(15)

@@ -9,6 +9,13 @@ import { ChatService } from '../services/ChatService';
 import { UserService } from '../services/UserService';
 import { ChatSession } from '../model/ChatSession';
 
+interface ChatItemCardPayload {
+  itemId: number;
+  title: string;
+  type: string;
+  publisherName: string;
+}
+
 const MSG_STATE_STORE = 'message_state';
 const PER_SESSION_READ_PREFIX = 'lastReadMsgId_';
 const HIDDEN_PREFIX = 'hidden_';
@@ -37,7 +44,8 @@ export struct MessagePage {
 
   onMessageListRefresh(): void {
     if (this.currentUserId) {
-      this.loadSessions(this.currentUserId);
+      this.isRefreshing = true;
+      this.loadSessions(this.currentUserId).finally(() => { this.isRefreshing = false; });
     }
   }
 
@@ -169,6 +177,22 @@ export struct MessagePage {
     return $r('app.color.badge_claimed_bg');
   }
 
+  private formatLastMessage(lastMessage: string | null): string {
+    if (!lastMessage) return '';
+    if (lastMessage === '[图片]' || lastMessage === '[物品卡片]' || lastMessage === '[系统消息]') {
+      return lastMessage;
+    }
+    if (lastMessage.startsWith('{')) {
+      try {
+        const payload = JSON.parse(lastMessage) as ChatItemCardPayload;
+        return `[物品卡片] ${payload.title}`;
+      } catch (e) {
+        return lastMessage;
+      }
+    }
+    return lastMessage;
+  }
+
   async doRefresh(): Promise<void> {
     if (this.currentUserId) {
       await this.loadSessions(this.currentUserId);
@@ -182,6 +206,7 @@ export struct MessagePage {
       const maxMsgId = await ChatService.getMaxMsgId(sessionId);
       const store = preferences.getPreferencesSync(getContext(this), { name: MSG_STATE_STORE });
       store.putSync(PER_SESSION_READ_PREFIX + sessionId, maxMsgId);
+      store.putSync('lastReadTime', Date.now());
       store.flush();
     } catch (e) { /* ignore */ }
     // 本地同步清零徽标（强 key 触发重渲）
@@ -338,14 +363,14 @@ export struct MessagePage {
                           .padding({ left: 4, right: 4, top: 1, bottom: 1 })
                           .borderRadius(3)
                       }
-                      Text(row.itemText || row.session.lastMessage || '开始聊天')
+                      Text(row.itemText || this.formatLastMessage(row.session.lastMessage) || '开始聊天')
                         .fontSize(12).fontColor($r('app.color.text_hint'))
                         .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                         .layoutWeight(1)
                     }.width('100%').alignItems(VerticalAlign.Center)
 
                     if (row.session.lastMessage) {
-                      Text(row.session.lastMessage)
+                      Text(this.formatLastMessage(row.session.lastMessage))
                         .fontSize(13).fontColor($r('app.color.text_tertiary'))
                         .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                         .width('100%')

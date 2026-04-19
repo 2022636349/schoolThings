@@ -3,10 +3,17 @@
  * 功能：失物招领 / 寻物启事 导航 + 卡片显示（分类/状态/点赞） + 筛选工具栏
  */
 import { router } from '@kit.ArkUI';
+import { preferences } from '@kit.ArkData';
 import { ItemService, ItemCard } from '../services/ItemService';
 import { HallItemCard } from '../components/HallItemCard';
 import { ITEM_CATEGORIES } from '../model/ItemCategory';
 import { HallItemData } from '../model/HallItemData';
+
+interface HallLikeSyncPayload {
+  itemId: number;
+  isLiked: boolean;
+  likeCount: number;
+}
 
 @Entry
 @Component
@@ -14,6 +21,7 @@ export struct HallPage {
   // 用 @Prop 接收 HomePage 已经算好的安全区高度，和 FrontPage 保持一致
   @Prop topHeight: number = 0;
   @Prop bottomHeight: number = 0;
+  @Prop refreshTrigger: number = 0;
   @State currentTypeIndex: number = 0;  // 0=失物招领, 1=寻物启事
   @State lostItems: HallItemData[] = [];
   @State foundItems: HallItemData[] = [];
@@ -21,28 +29,142 @@ export struct HallPage {
   @State isRefreshing: boolean = false;
 
   // 筛选/排序状态
-  @State sortBy: string = 'time-desc';   // time-desc/time-asc/like-desc/like-asc
-  @State filterCategory: string = '';     // 空=全部，否则为具体分类
+  @State searchKeyword: string = '';
+  @State searchHistory: string[] = [];
+  @State activeKeyword: string = '';
+  @State isSearchMode: boolean = false;
+  @State searchResults: HallItemData[] = [];
+  @State sortBy: string = 'time-desc';
+  @State filterCategory: string = '';
+  @State filterLocationKeyword: string = '';
+  @State timeRange: string = 'all';
   @State showCategoryFilter: boolean = false;
 
   aboutToAppear(): void {
     ItemService.resetAllPagination();
+    this.consumeLikeSync();
+    this.loadSearchHistory();
     this.loadItems();
   }
 
+  updateStateVars(): void {
+    if (this.refreshTrigger > 0) {
+      ItemService.resetAllPagination();
+      this.lostItems = [];
+      this.foundItems = [];
+      this.loadItems();
+    }
+  }
+
+  private loadSearchHistory(): void {
+    try {
+      const store = preferences.getPreferencesSync(getContext(this), { name: 'hall_search' });
+      const raw = store.getSync('keywords', '[]') as string;
+      this.searchHistory = JSON.parse(raw) as string[];
+    } catch (e) {
+      this.searchHistory = [];
+    }
+  }
+
+  private saveSearchHistory(keyword: string): void {
+    const next = [keyword, ...this.searchHistory.filter((item: string) => item !== keyword)].slice(0, 8);
+    this.searchHistory = next;
+    const store = preferences.getPreferencesSync(getContext(this), { name: 'hall_search' });
+    store.putSync('keywords', JSON.stringify(next));
+    store.flush();
+  }
+
+  private clearSearchHistory(): void {
+    this.searchHistory = [];
+    const store = preferences.getPreferencesSync(getContext(this), { name: 'hall_search' });
+    store.putSync('keywords', '[]');
+    store.flush();
+  }
+
   private getCurrentType(): string {
-    return this.currentTypeIndex === 0 ? 'lost' : 'find';
+    return this.currentTypeIndex === 0 ? 'lost' : 'found';
   }
 
   private getCurrentItems(): HallItemData[] {
-    const raw = this.currentTypeIndex === 0 ? this.lostItems : this.foundItems;
+    const raw = this.isSearchMode
+      ? this.searchResults
+      : (this.currentTypeIndex === 0 ? this.lostItems : this.foundItems);
     return this.applySortAndFilter(raw);
   }
 
+  private consumeLikeSync(): void {
+    const raw = AppStorage.get<string>('hallLikeSync');
+    if (!raw) return;
+    try {
+      const sync = JSON.parse(raw) as HallLikeSyncPayload;
+      this.updateItemLikeState(sync.itemId, sync.likeCount);
+    } catch (e) {
+    }
+    AppStorage.setOrCreate('hallLikeSync', '');
+  }
+
+  private cloneItem(item: HallItemData): HallItemData {
+    const next = new HallItemData();
+    next.itemId = item.itemId;
+    next.type = item.type;
+    next.text = item.text;
+    next.publishTime = item.publishTime;
+    next.publishId = item.publishId;
+    next.publisherName = item.publisherName;
+    next.publisherAvatar = item.publisherAvatar;
+    next.mediaList = item.mediaList;
+    next.category = item.category;
+    next.likeCount = item.likeCount;
+    next.status = item.status;
+    next.claimedBy = item.claimedBy;
+    next.lostTime = item.lostTime;
+    return next;
+  }
+
+  private updateItemLikeState(itemId: number, likeCount: number): void {
+    const patch = (items: HallItemData[]): HallItemData[] => {
+      return items.map((item: HallItemData) => {
+        if (item.itemId !== itemId) return item;
+        const next = this.cloneItem(item);
+        next.likeCount = likeCount;
+        return next;
+      });
+    };
+    this.lostItems = patch(this.lostItems);
+    this.foundItems = patch(this.foundItems);
+    this.searchResults = patch(this.searchResults);
+  }
+
+  private async doSearch(keyword: string): Promise<void> {
+    this.searchKeyword = keyword;
+    this.activeKeyword = keyword;
+    this.isSearchMode = true;
+    this.saveSearchHistory(keyword);
+    const list = await ItemService.searchByKeyword(keyword);
+    const hallItems = this.enrichItems(list).filter((item: HallItemData) => item.type === this.getCurrentType());
+    this.searchResults = hallItems;
+  }
+
+  private clearSearch(): void {
+    this.searchKeyword = '';
+    this.activeKeyword = '';
+    this.isSearchMode = false;
+    this.searchResults = [];
+  }
+
   private applySortAndFilter(items: HallItemData[]): HallItemData[] {
-    let result: HallItemData[] = items;
+    let result: HallItemData[] = [...items];
     if (this.filterCategory) {
       result = result.filter((item: HallItemData) => item.category === this.filterCategory);
+    }
+    if (this.filterLocationKeyword.trim().length > 0) {
+      const keyword = this.filterLocationKeyword.trim();
+      result = result.filter((item: HallItemData) => item.text.indexOf(keyword) >= 0);
+    }
+    if (this.timeRange !== 'all') {
+      const now = Date.now();
+      const limitMs = this.timeRange === '7d' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+      result = result.filter((item: HallItemData) => item.lostTime > 0 && (now - item.lostTime) <= limitMs);
     }
     if (this.sortBy === 'time-asc') {
       result = result.reverse();
@@ -108,6 +230,85 @@ export struct HallPage {
   }
 
   @Builder
+  buildSearchBar() {
+    Column() {
+      Row() {
+        Search({ value: this.searchKeyword, placeholder: '搜索物品名称、描述...' })
+          .searchButton('搜索')
+          .width('100%')
+          .onChange((value: string): void => {
+            this.searchKeyword = value
+          })
+          .onSubmit((value: string): void => {
+            if (value.trim()) {
+              this.doSearch(value.trim());
+            }
+          })
+      }
+      .width('100%')
+      .padding({ left: 12, right: 12, top: 10, bottom: 8 })
+      .backgroundColor($r('app.color.bg_card'))
+
+      if (this.searchHistory.length > 0 && !this.isSearchMode) {
+        Row({ space: 8 }) {
+          Text('最近搜索').fontSize(12).fontColor($r('app.color.text_hint'))
+          Blank()
+          Text('清空')
+            .fontSize(12)
+            .fontColor('#4E8FDF')
+            .onClick(() => { this.clearSearchHistory() })
+        }
+        .width('100%')
+        .padding({ left: 12, right: 12, top: 0, bottom: 6 })
+        .backgroundColor($r('app.color.bg_card'))
+
+        Scroll() {
+          Row({ space: 8 }) {
+            ForEach(this.searchHistory, (keyword: string) => {
+              Row() {
+                Text(keyword).fontSize(12).fontColor('#4E8FDF')
+              }
+              .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+              .backgroundColor('#EBF3FF')
+              .borderRadius(18)
+              .onClick(() => { this.doSearch(keyword) })
+            })
+          }
+          .padding({ left: 12, right: 12 })
+        }
+        .scrollable(ScrollDirection.Horizontal)
+        .scrollBar(BarState.Off)
+        .width('100%').height(40)
+        .backgroundColor($r('app.color.bg_card'))
+      }
+
+      if (this.isSearchMode) {
+        Row() {
+          Row({ space: 6 }) {
+            Text(this.activeKeyword)
+              .fontSize(13)
+              .fontColor('#4E8FDF')
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .constraintSize({ maxWidth: 200 })
+            Text('✕')
+              .fontSize(12)
+              .fontColor('#4E8FDF')
+              .onClick(() => { this.clearSearch() })
+          }
+          .padding({ left: 12, right: 10, top: 6, bottom: 6 })
+          .backgroundColor('#EBF3FF')
+          .borderRadius(20)
+          .border({ width: 1, color: '#C0D8F8' })
+        }
+        .width('100%')
+        .padding({ left: 12, right: 12, top: 0, bottom: 8 })
+        .backgroundColor($r('app.color.bg_card'))
+      }
+    }
+  }
+
+  @Builder
   buildTopNav() {
     Row() {
       Column() {
@@ -124,7 +325,13 @@ export struct HallPage {
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Center)
-      .onClick(() => { this.currentTypeIndex = 0 })
+      .onClick(() => {
+        this.currentTypeIndex = 0;
+        if (this.lostItems.length === 0 && !this.isLoading) {
+          ItemService.resetPaginationByType('lost');
+          this.loadItems();
+        }
+      })
 
       Column() {
         Text('寻物启事')
@@ -140,7 +347,13 @@ export struct HallPage {
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Center)
-      .onClick(() => { this.currentTypeIndex = 1 })
+      .onClick(() => {
+        this.currentTypeIndex = 1;
+        if (this.foundItems.length === 0 && !this.isLoading) {
+          ItemService.resetPaginationByType('found');
+          this.loadItems();
+        }
+      })
     }
     .width('100%')
     .height(52)
@@ -193,6 +406,29 @@ export struct HallPage {
   buildCategoryFilter() {
     Scroll() {
       Row({ space: 8 }) {
+        TextInput({ placeholder: '地点关键词', text: this.filterLocationKeyword })
+          .width(110).height(32).fontSize(12)
+          .backgroundColor('#F5F5F5')
+          .borderRadius(4)
+          .padding({ left: 8, right: 8 })
+          .onChange((value: string) => { this.filterLocationKeyword = value })
+
+        Row({ space: 4 }) {
+          Text(this.timeRange === 'all' ? '全部时间' : (this.timeRange === '7d' ? '近7天' : '近30天')).fontSize(12)
+          Text('▼').fontSize(10)
+        }
+        .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+        .backgroundColor(this.timeRange === 'all' ? '#F5F5F5' : '#E6F0FF')
+        .borderRadius(4)
+        .onClick(() => {
+          if (this.timeRange === 'all') {
+            this.timeRange = '7d';
+          } else if (this.timeRange === '7d') {
+            this.timeRange = '30d';
+          } else {
+            this.timeRange = 'all';
+          }
+        })
         Row() {
           Text('全部').fontSize(12)
           if (!this.filterCategory) {
@@ -243,8 +479,8 @@ export struct HallPage {
             .width('100%').height(200).justifyContent(FlexAlign.Center)
           } else if (this.getCurrentItems().length === 0) {
             Column({ space: 8 }) {
-              Text('暂无物品').fontSize(16).fontColor($r('app.color.text_hint'))
-              Text('下拉刷新试试').fontSize(13).fontColor($r('app.color.text_disabled'))
+              Text(this.isSearchMode ? '未找到相关物品' : '暂无物品').fontSize(16).fontColor($r('app.color.text_hint'))
+              Text(this.isSearchMode ? '试试更换关键词' : '下拉刷新试试').fontSize(13).fontColor($r('app.color.text_disabled'))
             }
             .width('100%').height(200).justifyContent(FlexAlign.Center)
           } else {
@@ -253,7 +489,9 @@ export struct HallPage {
                 HallItemCard({
                   item,
                   onCardClick: (i: HallItemData) => { this.handleCardClick(i) },
-                  onLikeClick: () => { /* 刷新点赞数，后续实现 */ }
+                  onLikeClick: (itemId: number, _isLiked: boolean, likeCount: number) => {
+                    this.updateItemLikeState(itemId, likeCount)
+                  }
                 })
               })
               Row().height(this.bottomHeight + 80)
@@ -275,6 +513,8 @@ export struct HallPage {
     Column() {
       // 顶部安全区占位
       Row().width('100%').height(this.topHeight).backgroundColor($r('app.color.bg_card'))
+
+      this.buildSearchBar()
 
       // 顶部导航（失物招领 / 寻物启事）
       this.buildTopNav()

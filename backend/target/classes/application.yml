@@ -1,0 +1,71 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  profiles:
+    active: dev
+  application:
+    name: lostfound-backend
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 100MB
+
+# MyBatis-Plus
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  mapper-locations: classpath*:mapper/**/*.xml
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# JWT
+jwt:
+  secret: campus-lostfound-super-secret-key-please-change-in-production-2026
+  # access token 有效期 2 小时
+  access-expire-minutes: 120
+  # refresh token 有效期 30 天
+  refresh-expire-days: 30
+  issuer: campus-lostfound
+  header: Authorization
+  prefix: "Bearer "
+
+# 业务配置
+app:
+  sms:
+    # 本地开发：不真发短信，直接返回到日志
+    mock: true
+    code-expire-minutes: 5
+    code-length: 6
+  upload:
+    bucket: campus-lostfound
+    public-host: http://10.48.220.83:9000
+  cors:
+    allowed-origins: "*"
+
+# SpringDoc / Knife4j
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+logging:
+  level:
+    root: INFO
+    com.campus.lostfound: DEBUG
