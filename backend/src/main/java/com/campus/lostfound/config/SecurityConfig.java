@@ -35,6 +35,7 @@ public class SecurityConfig {
 
     private static final String[] WHITE_LIST = {
             "/auth/**",
+            "/admin/auth/login",
             "/system/health",
             "/v3/api-docs/**",
             "/swagger-ui/**",
@@ -56,6 +57,7 @@ public class SecurityConfig {
                 .logout(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(WHITE_LIST).permitAll()
+                        .requestMatchers("/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(e -> e

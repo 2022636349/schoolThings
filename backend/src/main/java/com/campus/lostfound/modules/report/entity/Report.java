@@ -1,16 +1,16 @@
 package com.campus.lostfound.modules.report.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.campus.lostfound.common.entity.BaseEntity;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
+
+import java.time.LocalDateTime;
 
 @Data
-@EqualsAndHashCode(callSuper = true)
 @TableName("dispute")
-public class Report extends BaseEntity {
+public class Report {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String targetType;
@@ -22,4 +22,8 @@ public class Report extends BaseEntity {
     private String status;
     private Long handlerId;
     private String resolution;
+    @TableField("created_at")
+    private LocalDateTime createdAt;
+    @TableField("updated_at")
+    private LocalDateTime updatedAt;
 }

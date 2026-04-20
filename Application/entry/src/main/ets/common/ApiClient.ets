@@ -1,5 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
+import { promptAction, router } from '@kit.ArkUI';
 import { AppConfig } from './AppConfig';
 import { Session } from './Session';
 
@@ -59,6 +60,7 @@ function buildQuery(params?: QueryMap): string {
  * 通过 ApiClient.setContext() 注入一个 fallback，避免把 context 往到处传。
  */
 let globalContext: common.UIAbilityContext | null = null;
+let hasShownSessionExpiredToast: boolean = false;
 
 export class ApiClient {
   static setContext(ctx: common.UIAbilityContext): void {
@@ -93,7 +95,22 @@ export class ApiClient {
     return ApiClient.request<T>('DELETE', path, undefined, ctx);
   }
 
-  /** 返回成功后的 data（空则 null） */
+  private static handleSessionExpired(ctx?: common.UIAbilityContext): void {
+    const resolvedCtx = ApiClient.resolveContext(ctx);
+    if (resolvedCtx) {
+      Session.clear(resolvedCtx);
+    }
+    if (!hasShownSessionExpiredToast) {
+      hasShownSessionExpiredToast = true;
+      promptAction.showToast({ message: '登录已失效，请重新登录' });
+    }
+    router.replaceUrl({ url: 'pages/LoginPage' });
+  }
+
+  private static resetSessionExpiredFlag(): void {
+    hasShownSessionExpiredToast = false;
+  }
+
   private static async request<T>(
     method: string,
     path: string,
@@ -132,6 +149,9 @@ export class ApiClient {
         if ((status === 401 || status === 403) && !hasRetried && await ApiClient.tryRefreshToken(ctx)) {
           return ApiClient.request<T>(method, path, body, ctx, true);
         }
+        if (status === 401 || status === 403) {
+          ApiClient.handleSessionExpired(ctx);
+        }
         throw new ApiError(status, `HTTP ${status}: ${raw}`);
       }
 
@@ -139,9 +159,16 @@ export class ApiClient {
         return null as T;
       }
       const parsed = JSON.parse(raw) as ApiResult<T>;
+      if ((parsed.code === 2001 || parsed.code === 2004) && !hasRetried && await ApiClient.tryRefreshToken(ctx)) {
+        return ApiClient.request<T>(method, path, body, ctx, true);
+      }
+      if (parsed.code === 2001 || parsed.code === 2004) {
+        ApiClient.handleSessionExpired(ctx);
+      }
       if (parsed.code !== 0 && parsed.code !== 200) {
         throw new ApiError(parsed.code, parsed.message || '接口调用失败');
       }
+      ApiClient.resetSessionExpiredFlag();
       return parsed.data;
     } finally {
       httpRequest.destroy();

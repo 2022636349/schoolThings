@@ -42,19 +42,24 @@ public class JwtUtil {
     }
 
     public String generateAccessToken(Long userId, String nickname) {
-        return buildToken(userId, nickname, "access", accessExpireMinutes * 60 * 1000L);
+        return buildToken(userId, nickname, "access", "user", accessExpireMinutes * 60 * 1000L);
+    }
+
+    public String generateAdminAccessToken(Long adminId, String username, String role) {
+        return buildToken(adminId, username, "access", role == null ? "admin" : role, accessExpireMinutes * 60 * 1000L);
     }
 
     public String generateRefreshToken(Long userId) {
-        return buildToken(userId, null, "refresh", refreshExpireDays * 24 * 60 * 60 * 1000L);
+        return buildToken(userId, null, "refresh", "user", refreshExpireDays * 24 * 60 * 60 * 1000L);
     }
 
-    private String buildToken(Long userId, String nickname, String type, long ttlMillis) {
+    private String buildToken(Long userId, String nickname, String type, String role, long ttlMillis) {
         Date now = new Date();
         Date exp = new Date(now.getTime() + ttlMillis);
         Map<String, Object> claims = new HashMap<>();
         claims.put("uid", userId);
         claims.put("type", type);
+        claims.put("role", role);
         if (nickname != null) {
             claims.put("nickname", nickname);
         }
@@ -95,6 +100,11 @@ public class JwtUtil {
             log.debug("token invalid: {}", e.getMessage());
             return false;
         }
+    }
+
+    public String getRole(String token) {
+        Object role = parse(token).get("role");
+        return role == null ? "user" : String.valueOf(role);
     }
 
     public long getAccessExpireSeconds() {

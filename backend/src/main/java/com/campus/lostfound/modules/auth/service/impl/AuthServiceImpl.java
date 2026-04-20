@@ -70,12 +70,12 @@ public class AuthServiceImpl implements AuthService {
         if (u == null) {
             throw new BusinessException(ResultCode.USER_NOT_FOUND);
         }
+        if (u.getStatus() != null && u.getStatus() == 0) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "账号已被禁用");
+        }
         if (StrUtil.isBlank(u.getPassword())
                 || !passwordEncoder.matches(req.getPassword(), u.getPassword())) {
             throw new BusinessException(ResultCode.PASSWORD_ERROR);
-        }
-        if (u.getStatus() != null && u.getStatus() == 0) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "账号已被禁用");
         }
         userService.updateLastLogin(u.getId(), ip);
         return buildToken(u);
@@ -101,12 +101,12 @@ public class AuthServiceImpl implements AuthService {
         if (u == null) {
             throw new BusinessException(ResultCode.USER_NOT_FOUND);
         }
+        if (u.getStatus() != null && u.getStatus() == 0) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "账号已被禁用");
+        }
         if (StrUtil.isBlank(u.getPassword())
                 || !passwordEncoder.matches(req.getPassword(), u.getPassword())) {
             throw new BusinessException(ResultCode.PASSWORD_ERROR);
-        }
-        if (u.getStatus() != null && u.getStatus() == 0) {
-            throw new BusinessException(ResultCode.FORBIDDEN, "账号已被禁用");
         }
         userService.updateLastLogin(u.getId(), ip);
         return buildToken(u);

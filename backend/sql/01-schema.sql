@@ -11,6 +11,24 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 -- ================== 用户域 ==================
 
+DROP TABLE IF EXISTS `admin_user`;
+CREATE TABLE `admin_user` (
+    `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `username`      VARCHAR(64)     NOT NULL,
+    `password`      VARCHAR(128)    NOT NULL COMMENT 'BCrypt 密码',
+    `nickname`      VARCHAR(64)              DEFAULT NULL,
+    `role`          VARCHAR(32)     NOT NULL DEFAULT 'ADMIN' COMMENT 'SUPER_ADMIN/ADMIN',
+    `status`        TINYINT         NOT NULL DEFAULT 1,
+    `last_login_at` DATETIME                 DEFAULT NULL,
+    `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `deleted`       TINYINT         NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台管理员';
+INSERT INTO `admin_user` (`username`, `password`, `nickname`, `role`, `status`) VALUES
+('admin', '$2a$10$7EqJtq98hPqEX7fNZaFWoOHiA8YQ2L4m7sV7n0xuxJkw3e8W1Q2aS', '系统管理员', 'SUPER_ADMIN', 1);
+
 DROP TABLE IF EXISTS `user`;
 CREATE TABLE `user` (
     `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',

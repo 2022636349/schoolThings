@@ -17,6 +17,8 @@ public interface ChatService {
 
     ChatMessageVO sendMessage(Long sessionId, Long senderId, String content, String type, String imageUrl);
 
+    ChatMessageVO sendSystemMessage(Long sessionId, Long senderId, String content);
+
     List<ChatMessageVO> listMessages(Long sessionId, int limit);
 
     /** @return 双方是否都已确认 */

@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { ApiClient } from '../common/ApiClient';
+import { ApiClient, ApiError } from '../common/ApiClient';
 import { Session } from '../common/Session';
 
 /**
@@ -26,6 +26,13 @@ interface LoginResp {
   avatar: string | null;
   expiresIn: number;
   tokenType: string;
+}
+
+function getErrorMessage(error: Object): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+  return '登录失败，请稍后重试';
 }
 
 interface MeResp {
@@ -79,11 +86,13 @@ export class AuthService {
 
   /** 登录（学号 + 密码），成功后把 token + 基本信息落盘 */
   static async login(studentNo: string, password: string): Promise<boolean> {
+    const ctx = ApiClient.getContext();
+    const body: StudentLoginBody = { studentNo: studentNo, password: password };
     try {
-      const ctx = ApiClient.getContext();
-      const body: StudentLoginBody = { studentNo: studentNo, password: password };
       const resp = await ApiClient.post<LoginResp>('/auth/login/student', body);
-      if (!resp || !resp.accessToken) return false;
+      if (!resp || !resp.accessToken) {
+        throw new Error('登录失败，请稍后重试');
+      }
       if (ctx) {
         Session.save(ctx, {
           userId: String(resp.userId),
@@ -95,9 +104,8 @@ export class AuthService {
         });
       }
       return true;
-    } catch (e) {
-      console.error('[AuthService] login failed:', e);
-      return false;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
     }
   }
 

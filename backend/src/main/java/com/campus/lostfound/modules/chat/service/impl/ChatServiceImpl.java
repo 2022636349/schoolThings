@@ -125,6 +125,12 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    @Transactional
+    public ChatMessageVO sendSystemMessage(Long sessionId, Long senderId, String content) {
+        return sendMessage(sessionId, senderId, content, "system", null);
+    }
+
+    @Override
     public List<ChatMessageVO> listMessages(Long sessionId, int limit) {
         if (limit <= 0) limit = 50;
         if (limit > 200) limit = 200;

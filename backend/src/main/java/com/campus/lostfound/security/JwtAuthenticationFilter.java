@@ -1,7 +1,12 @@
 package com.campus.lostfound.security;
 
+import com.alibaba.fastjson2.JSON;
+import com.campus.lostfound.common.result.Result;
+import com.campus.lostfound.common.result.ResultCode;
 import com.campus.lostfound.common.util.JwtUtil;
 import com.campus.lostfound.common.util.UserContext;
+import com.campus.lostfound.modules.user.entity.User;
+import com.campus.lostfound.modules.user.mapper.UserMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -19,7 +24,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
+import java.util.List;
 
 /**
  * JWT 认证过滤器：
@@ -33,6 +38,7 @@ import java.util.Collections;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final UserMapper userMapper;
 
     @Value("${jwt.header:Authorization}")
     private String headerName;
@@ -49,12 +55,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (StringUtils.hasText(token) && jwtUtil.isValid(token)) {
                 Claims claims = jwtUtil.parse(token);
                 Long userId = jwtUtil.getUserId(token);
+                String role = jwtUtil.getRole(token);
+                if ("user".equalsIgnoreCase(role)) {
+                    User user = userMapper.selectById(userId);
+                    if (user == null || (user.getStatus() != null && user.getStatus() == 0)) {
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.setContentType("application/json;charset=UTF-8");
+                        response.getWriter().write(JSON.toJSONString(Result.fail(ResultCode.UNAUTHORIZED, "登录已失效，请重新登录")));
+                        return;
+                    }
+                }
                 UserContext.set(userId);
 
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                         userId,
                         null,
-                        Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
+                        List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
                 );
                 auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(auth);

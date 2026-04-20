@@ -31,11 +31,10 @@ struct LoginPage {
         // 注意：建议此处 saveSession 只保存必要信息，避免持久化明文密码
         AuthService.saveSession(getContext(this) as common.UIAbilityContext, this.username, this.username);
         router.replaceUrl({ url: 'pages/HomePage' });
-      } else {
-        this.errorMessage = '账号或密码错误，请重试！';
       }
     } catch (error) {
-      this.errorMessage = error.toString();
+      this.errorMessage = error instanceof Error ? error.message : '登录失败，请稍后重试';
+      promptAction.showToast({ message: this.errorMessage });
     } finally {
       this.isLoading = false;
     }
