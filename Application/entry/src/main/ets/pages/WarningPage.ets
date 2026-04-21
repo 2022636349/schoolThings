@@ -127,6 +127,7 @@ export struct WarningPage {
                 p['likeCount'] = item.likeCount;
                 p['status'] = item.status;
                 p['claimedBy'] = item.claimedBy || '';
+                p['claimedByStudentNo'] = item.claimedByStudentNo || '';
                 p['lostTime'] = item.lostTime;
                 router.pushUrl({ url: 'pages/DetailPage', params: p });
               })

@@ -117,6 +117,7 @@ export struct HallPage {
     next.likeCount = item.likeCount;
     next.status = item.status;
     next.claimedBy = item.claimedBy;
+    next.claimedByStudentNo = item.claimedByStudentNo;
     next.lostTime = item.lostTime;
     return next;
   }
@@ -206,6 +207,7 @@ export struct HallPage {
       data.likeCount = item.likeCount || 0;
       data.status = item.status || 'active';
       data.claimedBy = item.claimedBy || '';
+      data.claimedByStudentNo = item.claimedByStudentNo || '';
       data.lostTime = item.lostTime || 0;
       return data;
     });

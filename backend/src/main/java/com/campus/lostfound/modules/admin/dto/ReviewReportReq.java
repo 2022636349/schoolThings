@@ -7,5 +7,10 @@ public class ReviewReportReq {
     private String status;
     private String resolution;
     private String itemStatus;
-    private Integer userStatus;
+    private Integer reporterHeartDelta;
+    private Integer reporterFraudDelta;
+    private Integer publisherHeartDelta;
+    private Integer publisherFraudDelta;
+    private Integer claimantHeartDelta;
+    private Integer claimantFraudDelta;
 }

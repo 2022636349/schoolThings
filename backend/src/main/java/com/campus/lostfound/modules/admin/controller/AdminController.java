@@ -13,8 +13,6 @@ import com.campus.lostfound.modules.announcement.mapper.AnnouncementMapper;
 import com.campus.lostfound.modules.chat.entity.ChatSession;
 import com.campus.lostfound.modules.chat.mapper.ChatSessionMapper;
 import com.campus.lostfound.modules.chat.service.ChatService;
-import com.campus.lostfound.modules.claim.entity.ClaimRequest;
-import com.campus.lostfound.modules.claim.mapper.ClaimRequestMapper;
 import com.campus.lostfound.modules.feedback.entity.Feedback;
 import com.campus.lostfound.modules.feedback.mapper.FeedbackMapper;
 import com.campus.lostfound.modules.item.entity.Item;
@@ -63,7 +61,6 @@ public class AdminController {
     private final AnnouncementMapper announcementMapper;
     private final ChatSessionMapper chatSessionMapper;
     private final ChatService chatService;
-    private final ClaimRequestMapper claimRequestMapper;
     private final ReportMapper reportMapper;
     private final FeedbackMapper feedbackMapper;
 
@@ -140,16 +137,14 @@ public class AdminController {
         DashboardStatsVO vo = new DashboardStatsVO();
         vo.setUserCount(userMapper.selectCount(new LambdaQueryWrapper<User>().eq(User::getDeleted, 0)));
         vo.setItemCount(itemMapper.selectCount(new LambdaQueryWrapper<Item>().eq(Item::getDeleted, 0)));
-        vo.setClaimCount(claimRequestMapper.selectCount(new LambdaQueryWrapper<ClaimRequest>()));
         vo.setReportCount(reportMapper.selectCount(new LambdaQueryWrapper<Report>()));
-        vo.setPendingClaimCount(claimRequestMapper.selectCount(new LambdaQueryWrapper<ClaimRequest>().eq(ClaimRequest::getStatus, "pending")));
         vo.setPendingReportCount(reportMapper.selectCount(new LambdaQueryWrapper<Report>().eq(Report::getStatus, "pending")));
         vo.setTrends(buildTrends(7));
         vo.setRecentAnnouncements(recentAnnouncements(5));
         vo.setRecentItems(recentItems(5));
         vo.setRecentReports(recentReports(5));
-        log.warn("dashboard stats userCount={}, itemCount={}, claimCount={}, reportCount={}, pendingClaimCount={}, pendingReportCount={}",
-                vo.getUserCount(), vo.getItemCount(), vo.getClaimCount(), vo.getReportCount(), vo.getPendingClaimCount(), vo.getPendingReportCount());
+        log.warn("dashboard stats userCount={}, itemCount={}, reportCount={}, pendingReportCount={}",
+                vo.getUserCount(), vo.getItemCount(), vo.getReportCount(), vo.getPendingReportCount());
         return Result.success(vo);
     }
 
@@ -178,7 +173,6 @@ public class AdminController {
             vo.setHeartValue(statValue(stat, UserStat::getHeartValue));
             vo.setFraudValue(statValue(stat, UserStat::getFraudValue));
             vo.setPostCount(statValue(stat, UserStat::getPostCount));
-            vo.setClaimCount(statValue(stat, UserStat::getClaimCount));
             vo.setReturnCount(statValue(stat, UserStat::getReturnCount));
             vo.setLikeReceived(statValue(stat, UserStat::getLikeReceived));
             list.add(vo);
@@ -340,7 +334,6 @@ public class AdminController {
         String csv = "type,count\n"
                 + "users," + defaultLong(userMapper.selectCount(new LambdaQueryWrapper<User>().eq(User::getDeleted, 0))) + "\n"
                 + "items," + defaultLong(itemMapper.selectCount(new LambdaQueryWrapper<Item>().eq(Item::getDeleted, 0))) + "\n"
-                + "claims," + defaultLong(claimRequestMapper.selectCount(new LambdaQueryWrapper<ClaimRequest>())) + "\n"
                 + "reports," + defaultLong(reportMapper.selectCount(new LambdaQueryWrapper<Report>())) + "\n";
         return Result.success(csv);
     }
@@ -394,88 +387,51 @@ public class AdminController {
         return Result.success();
     }
 
-    @Operation(summary = "认领申请列表")
-    @GetMapping("/claims")
-    public Result<List<AdminClaimVO>> claims() {
-        List<ClaimRequest> items = claimRequestMapper.selectList(new LambdaQueryWrapper<ClaimRequest>().orderByDesc(ClaimRequest::getId).last("LIMIT 100"));
-        Map<Long, Item> itemMap = loadItemMapByIdsFromClaims(items);
-        Map<Long, User> userMap = loadUserMapByClaimUsers(items);
-        List<AdminClaimVO> list = new ArrayList<>();
-        for (ClaimRequest item : items) {
-            Item linkedItem = itemMap.get(item.getItemId());
-            User claimant = item.getClaimantId() == null ? null : userMap.get(item.getClaimantId());
-            User publisher = item.getPublisherId() == null ? null : userMap.get(item.getPublisherId());
-            AdminClaimVO vo = new AdminClaimVO();
-            vo.setId(item.getId());
-            vo.setItemId(item.getItemId());
-            vo.setItemTitle(linkedItem == null ? null : linkedItem.getTitle());
-            vo.setItemStatus(linkedItem == null ? null : linkedItem.getStatus());
-            vo.setDescription(item.getDescription());
-            vo.setContact(item.getContact());
-            vo.setStatus(item.getStatus());
-            vo.setClaimantId(item.getClaimantId() == null ? null : String.valueOf(item.getClaimantId()));
-            vo.setClaimantName(claimant == null ? null : claimant.getNickname());
-            vo.setPublisherId(item.getPublisherId() == null ? null : String.valueOf(item.getPublisherId()));
-            vo.setPublisherName(publisher == null ? null : publisher.getNickname());
-            vo.setReviewRemark(item.getRejectReason());
-            vo.setCreatedAt(toMillis(item.getCreatedAt()));
-            vo.setApprovedAt(toMillis(item.getApprovedAt()));
-            list.add(vo);
-        }
-        return Result.success(list);
-    }
-
-    @Operation(summary = "审批认领申请")
-    @PostMapping("/claims/{id}/status")
-    public Result<Void> reviewClaim(@PathVariable("id") Long id, @RequestBody ReviewClaimReq req) {
-        ClaimRequest current = claimRequestMapper.selectById(id);
-        if (current == null) {
-            return Result.success();
-        }
-        ClaimRequest item = new ClaimRequest();
-        item.setId(id);
-        item.setStatus(req.getStatus());
-        item.setRejectReason(req.getRemark());
-        item.setApprovedAt("approved".equals(req.getStatus()) ? toLocalDateTime(System.currentTimeMillis()) : null);
-        claimRequestMapper.updateById(item);
-        if (current.getItemId() != null && hasText(req.getStatus())) {
-            Item update = new Item();
-            update.setId(current.getItemId());
-            if ("approved".equals(req.getStatus())) {
-                update.setStatus("claimed");
-                update.setClaimedBy(current.getClaimantId());
-                update.setClaimedAt(toLocalDateTime(System.currentTimeMillis()));
-            } else if ("rejected".equals(req.getStatus())) {
-                update.setStatus("active");
-            }
-            itemMapper.updateById(update);
-        }
-        notifyClaimReview(current, req);
-        return Result.success();
-    }
-
     @Operation(summary = "举报列表")
     @GetMapping("/reports")
     public Result<List<AdminReportVO>> reports() {
         List<Report> items = reportMapper.selectList(new LambdaQueryWrapper<Report>().orderByDesc(Report::getId).last("LIMIT 100"));
         Map<Long, User> reporterMap = loadReportUserMap(items);
         Map<Long, Item> itemMap = loadReportItemMap(items);
+        Map<Long, User> itemPartyMap = loadReportItemPartyMap(itemMap);
+        Map<Long, UserStat> reportUserStatMap = loadReportUserStatMap(items, itemMap);
         List<AdminReportVO> list = new ArrayList<>();
         for (Report item : items) {
             User reporter = item.getReporterId() == null ? null : reporterMap.get(item.getReporterId());
             Item targetItem = "item".equals(item.getTargetType()) ? itemMap.get(item.getTargetId()) : null;
+            User publisher = targetItem == null || targetItem.getPublisherId() == null ? null : itemPartyMap.get(targetItem.getPublisherId());
+            User claimant = targetItem == null || targetItem.getClaimedBy() == null ? null : itemPartyMap.get(targetItem.getClaimedBy());
+            UserStat reporterStat = item.getReporterId() == null ? null : reportUserStatMap.get(item.getReporterId());
+            UserStat publisherStat = targetItem == null || targetItem.getPublisherId() == null ? null : reportUserStatMap.get(targetItem.getPublisherId());
+            UserStat claimantStat = targetItem == null || targetItem.getClaimedBy() == null ? null : reportUserStatMap.get(targetItem.getClaimedBy());
             AdminReportVO vo = new AdminReportVO();
             vo.setId(item.getId());
             vo.setTargetType(item.getTargetType());
             vo.setTargetId(item.getTargetId());
             vo.setTargetTitle(targetItem == null ? null : targetItem.getTitle());
             vo.setReporterId(item.getReporterId() == null ? null : String.valueOf(item.getReporterId()));
+            vo.setReporterStudentNo(reporter == null ? null : reporter.getStudentNo());
             vo.setReporterName(reporter == null ? null : reporter.getNickname());
+            vo.setReporterPhone(reporter == null ? null : reporter.getPhone());
+            vo.setPublisherId(targetItem == null || targetItem.getPublisherId() == null ? null : String.valueOf(targetItem.getPublisherId()));
+            vo.setPublisherStudentNo(publisher == null ? null : publisher.getStudentNo());
+            vo.setPublisherName(publisher == null ? null : publisher.getNickname());
+            vo.setPublisherPhone(publisher == null ? null : publisher.getPhone());
+            vo.setClaimantId(targetItem == null || targetItem.getClaimedBy() == null ? null : String.valueOf(targetItem.getClaimedBy()));
+            vo.setClaimantStudentNo(claimant == null ? null : claimant.getStudentNo());
+            vo.setClaimantName(claimant == null ? null : claimant.getNickname());
+            vo.setClaimantPhone(claimant == null ? null : claimant.getPhone());
             vo.setReason(item.getReason());
             vo.setDescription(item.getDescription());
             vo.setEvidenceUrls(item.getEvidenceUrls());
             vo.setStatus(item.getStatus());
             vo.setResolution(item.getResolution());
+            vo.setReporterHeartValue(statValue(reporterStat, UserStat::getHeartValue));
+            vo.setReporterFraudValue(statValue(reporterStat, UserStat::getFraudValue));
+            vo.setPublisherHeartValue(statValue(publisherStat, UserStat::getHeartValue));
+            vo.setPublisherFraudValue(statValue(publisherStat, UserStat::getFraudValue));
+            vo.setClaimantHeartValue(statValue(claimantStat, UserStat::getHeartValue));
+            vo.setClaimantFraudValue(statValue(claimantStat, UserStat::getFraudValue));
             vo.setCreatedAt(toMillis(item.getCreatedAt()));
             list.add(vo);
         }
@@ -494,17 +450,20 @@ public class AdminController {
         item.setStatus(req.getStatus());
         item.setResolution(req.getResolution());
         reportMapper.updateById(item);
-        if ("item".equals(current.getTargetType()) && current.getTargetId() != null && hasText(req.getItemStatus())) {
-            Item target = new Item();
-            target.setId(current.getTargetId());
-            target.setStatus(req.getItemStatus());
-            itemMapper.updateById(target);
+        Item targetItem = null;
+        if ("item".equals(current.getTargetType()) && current.getTargetId() != null) {
+            targetItem = itemMapper.selectById(current.getTargetId());
+            if (targetItem != null && hasText(req.getItemStatus())) {
+                Item target = new Item();
+                target.setId(current.getTargetId());
+                target.setStatus(req.getItemStatus());
+                itemMapper.updateById(target);
+            }
         }
-        if (current.getReporterId() != null && req.getUserStatus() != null) {
-            User reporter = new User();
-            reporter.setId(current.getReporterId());
-            reporter.setStatus(req.getUserStatus());
-            userMapper.updateById(reporter);
+        applyUserStatDelta(current.getReporterId(), req.getReporterHeartDelta(), req.getReporterFraudDelta());
+        if (targetItem != null) {
+            applyUserStatDelta(targetItem.getPublisherId(), req.getPublisherHeartDelta(), req.getPublisherFraudDelta());
+            applyUserStatDelta(targetItem.getClaimedBy(), req.getClaimantHeartDelta(), req.getClaimantFraudDelta());
         }
         return Result.success();
     }
@@ -580,7 +539,6 @@ public class AdminController {
             vo.setDate(day.format(formatter));
             vo.setUserCount(userMapper.selectCount(new LambdaQueryWrapper<User>().ge(User::getCreatedAt, start).lt(User::getCreatedAt, end)));
             vo.setItemCount(itemMapper.selectCount(new LambdaQueryWrapper<Item>().ge(Item::getCreatedAt, start).lt(Item::getCreatedAt, end)));
-            vo.setClaimCount(claimRequestMapper.selectCount(new LambdaQueryWrapper<ClaimRequest>().ge(ClaimRequest::getCreatedAt, start).lt(ClaimRequest::getCreatedAt, end)));
             vo.setReportCount(reportMapper.selectCount(new LambdaQueryWrapper<Report>().ge(Report::getCreatedAt, start).lt(Report::getCreatedAt, end)));
             list.add(vo);
         }
@@ -705,63 +663,6 @@ public class AdminController {
         return map;
     }
 
-    private Map<Long, Item> loadItemMapByIdsFromClaims(List<ClaimRequest> claims) {
-        List<Long> ids = new ArrayList<>();
-        for (ClaimRequest claim : claims) {
-            if (claim.getItemId() != null) {
-                ids.add(claim.getItemId());
-            }
-        }
-        if (ids.isEmpty()) {
-            return Collections.emptyMap();
-        }
-        List<Item> items = itemMapper.selectList(new LambdaQueryWrapper<Item>().in(Item::getId, ids));
-        Map<Long, Item> map = new HashMap<>();
-        for (Item item : items) {
-            map.put(item.getId(), item);
-        }
-        return map;
-    }
-
-    private Map<Long, User> loadUserMapByClaimUsers(List<ClaimRequest> claims) {
-        List<Long> ids = new ArrayList<>();
-        for (ClaimRequest claim : claims) {
-            if (claim.getClaimantId() != null) {
-                ids.add(claim.getClaimantId());
-            }
-            if (claim.getPublisherId() != null) {
-                ids.add(claim.getPublisherId());
-            }
-        }
-        if (ids.isEmpty()) {
-            return Collections.emptyMap();
-        }
-        List<User> users = userMapper.selectList(new LambdaQueryWrapper<User>().in(User::getId, ids));
-        Map<Long, User> map = new HashMap<>();
-        for (User user : users) {
-            map.put(user.getId(), user);
-        }
-        return map;
-    }
-
-    private void notifyClaimReview(ClaimRequest claim, ReviewClaimReq req) {
-        if (claim.getItemId() == null || claim.getClaimantId() == null || claim.getPublisherId() == null) {
-            return;
-        }
-        ChatSession session = chatSessionMapper.selectOne(new LambdaQueryWrapper<ChatSession>()
-                .eq(ChatSession::getItemId, claim.getItemId())
-                .eq(ChatSession::getInitiatorId, claim.getClaimantId())
-                .eq(ChatSession::getOwnerId, claim.getPublisherId())
-                .last("LIMIT 1"));
-        if (session == null) {
-            return;
-        }
-        String text = "approved".equals(req.getStatus())
-                ? "你的认领申请已通过" + (hasText(req.getRemark()) ? "，备注：" + req.getRemark() : "")
-                : "你的认领申请未通过" + (hasText(req.getRemark()) ? "，原因：" + req.getRemark() : "");
-        chatService.sendSystemMessage(session.getId(), claim.getPublisherId(), text);
-    }
-
     private Map<Long, User> loadReportUserMap(List<Report> reports) {
         List<Long> ids = new ArrayList<>();
         for (Report report : reports) {
@@ -796,6 +697,53 @@ public class AdminController {
             map.put(item.getId(), item);
         }
         return map;
+    }
+
+    private Map<Long, User> loadReportItemPartyMap(Map<Long, Item> itemMap) {
+        List<Long> ids = new ArrayList<>();
+        for (Item item : itemMap.values()) {
+            if (item.getPublisherId() != null) {
+                ids.add(item.getPublisherId());
+            }
+            if (item.getClaimedBy() != null) {
+                ids.add(item.getClaimedBy());
+            }
+        }
+        return loadUsersByIds(ids);
+    }
+
+    private Map<Long, UserStat> loadReportUserStatMap(List<Report> reports, Map<Long, Item> itemMap) {
+        List<Long> ids = new ArrayList<>();
+        for (Report report : reports) {
+            if (report.getReporterId() != null) {
+                ids.add(report.getReporterId());
+            }
+            Item item = itemMap.get(report.getTargetId());
+            if (item != null && item.getPublisherId() != null) {
+                ids.add(item.getPublisherId());
+            }
+        }
+        if (ids.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<UserStat> stats = userStatMapper.selectList(new LambdaQueryWrapper<UserStat>().in(UserStat::getUserId, ids));
+        Map<Long, UserStat> map = new HashMap<>();
+        for (UserStat stat : stats) {
+            map.put(stat.getUserId(), stat);
+        }
+        return map;
+    }
+
+    private void applyUserStatDelta(Long userId, Integer heartDelta, Integer fraudDelta) {
+        if (userId == null) {
+            return;
+        }
+        if (heartDelta != null && heartDelta != 0) {
+            userStatMapper.adjustHeartValue(userId, heartDelta);
+        }
+        if (fraudDelta != null && fraudDelta != 0) {
+            userStatMapper.adjustFraudValue(userId, fraudDelta);
+        }
     }
 
     private Map<Long, List<String>> loadItemImages(List<Item> items) {

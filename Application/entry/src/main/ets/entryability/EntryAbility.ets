@@ -4,6 +4,7 @@ import { window } from '@kit.ArkUI';
 import { AuthService } from '../services/AuthService';
 import { ChatService } from '../services/ChatService';
 import { ApiClient } from '../common/ApiClient';
+import { NetworkMonitor } from '../common/NetworkMonitor';
 import { preferences } from '@kit.ArkData';
 import { notificationManager } from '@kit.NotificationKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
@@ -27,12 +28,15 @@ export default class EntryAbility extends UIAbility {
     hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onCreate');
     // 注入全局 context 到 ApiClient，所有 service 都能用
     ApiClient.setContext(this.context);
+    // 启动全局网络连通性监听（写入 AppStorage['isOnline']）
+    NetworkMonitor.start();
     // 冷启动：提取跳转参数（卡片或推送点击）
     this.parseLaunchWant(want);
   }
 
   onDestroy(): void {
     this.clearBgPoll();
+    NetworkMonitor.stop();
     hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onDestroy');
   }
 

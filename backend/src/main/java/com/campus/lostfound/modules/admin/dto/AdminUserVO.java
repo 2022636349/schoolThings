@@ -13,7 +13,6 @@ public class AdminUserVO {
     private Integer heartValue;
     private Integer fraudValue;
     private Integer postCount;
-    private Integer claimCount;
     private Integer returnCount;
     private Integer likeReceived;
 }

@@ -21,4 +21,12 @@ public interface UserStatMapper extends BaseMapper<UserStat> {
     @Update("INSERT INTO user_stat(user_id, return_count, updated_at) VALUES(#{uid}, 1, NOW()) " +
             "ON DUPLICATE KEY UPDATE return_count = return_count + 1, updated_at = NOW()")
     int incrementReturn(@Param("uid") Long userId);
+
+    @Update("INSERT INTO user_stat(user_id, heart_value, updated_at) VALUES(#{uid}, #{delta}, NOW()) " +
+            "ON DUPLICATE KEY UPDATE heart_value = GREATEST(0, heart_value + #{delta}), updated_at = NOW()")
+    int adjustHeartValue(@Param("uid") Long userId, @Param("delta") int delta);
+
+    @Update("INSERT INTO user_stat(user_id, fraud_value, updated_at) VALUES(#{uid}, #{delta}, NOW()) " +
+            "ON DUPLICATE KEY UPDATE fraud_value = GREATEST(0, fraud_value + #{delta}), updated_at = NOW()")
+    int adjustFraudValue(@Param("uid") Long userId, @Param("delta") int delta);
 }

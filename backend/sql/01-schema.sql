@@ -210,40 +210,6 @@ CREATE TABLE `item_view_log` (
 
 -- ================== 认领域 ==================
 
-DROP TABLE IF EXISTS `claim_request`;
-CREATE TABLE `claim_request` (
-    `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `item_id`       BIGINT UNSIGNED NOT NULL,
-    `claimant_id`   BIGINT UNSIGNED NOT NULL COMMENT '认领申请人 userId',
-    `publisher_id`  BIGINT UNSIGNED NOT NULL COMMENT '发布者 userId（冗余）',
-    `description`   TEXT                     COMMENT '申请说明：物品特征等',
-    `contact`       VARCHAR(128)             DEFAULT NULL COMMENT '认领人联系方式',
-    `status`        VARCHAR(16)     NOT NULL DEFAULT 'pending' COMMENT 'pending/approved/rejected/confirmed/disputed/cancelled',
-    `reject_reason` VARCHAR(255)             DEFAULT NULL,
-    `approved_at`   DATETIME                 DEFAULT NULL,
-    `confirmed_at`  DATETIME                 DEFAULT NULL COMMENT '线下交接确认时间',
-    `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    KEY `idx_item` (`item_id`),
-    KEY `idx_claimant` (`claimant_id`),
-    KEY `idx_publisher` (`publisher_id`),
-    KEY `idx_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='认领申请';
-
-DROP TABLE IF EXISTS `claim_evidence`;
-CREATE TABLE `claim_evidence` (
-    `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `claim_id`   BIGINT UNSIGNED NOT NULL,
-    `type`       VARCHAR(16)     NOT NULL COMMENT 'image/text/ocr',
-    `url`        VARCHAR(512)             DEFAULT NULL,
-    `content`    TEXT                     COMMENT '文字凭证',
-    `sort`       INT             NOT NULL DEFAULT 0,
-    `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    KEY `idx_claim` (`claim_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='认领凭证';
-
 DROP TABLE IF EXISTS `dispute`;
 CREATE TABLE `dispute` (
     `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

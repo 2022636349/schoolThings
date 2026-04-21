@@ -6,113 +6,19 @@ import { AuthService } from '../services/AuthService';
 import { UserService } from '../services/UserService';
 import picker from '@ohos.file.picker';
 
-// ────── 修改密码弹窗 ──────
-@CustomDialog
-struct ChangePasswordDialog {
-  controller: CustomDialogController = new CustomDialogController({ builder: ChangePasswordDialog() });
-  @State oldPwd: string = '';
-  @State newPwd: string = '';
-  @State confirmPwd: string = '';
-  onSubmit: (oldPwd: string, newPwd: string, confirmPwd: string) => void = () => {};
-
-  build() {
-    Column({ space: 16 }) {
-      Text('修改密码')
-        .fontSize(18).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary'))
-        .width('100%').textAlign(TextAlign.Center)
-
-      TextInput({ placeholder: '当前密码' })
-        .type(InputType.Password)
-        .fontSize(15).height(48)
-        .backgroundColor($r('app.color.bg_secondary')).borderRadius(10)
-        .onChange((v: string) => { this.oldPwd = v; })
-
-      TextInput({ placeholder: '新密码（至少 6 位）' })
-        .type(InputType.Password)
-        .fontSize(15).height(48)
-        .backgroundColor($r('app.color.bg_secondary')).borderRadius(10)
-        .onChange((v: string) => { this.newPwd = v; })
-
-      TextInput({ placeholder: '确认新密码' })
-        .type(InputType.Password)
-        .fontSize(15).height(48)
-        .backgroundColor($r('app.color.bg_secondary')).borderRadius(10)
-        .onChange((v: string) => { this.confirmPwd = v; })
-
-      Row({ space: 12 }) {
-        Button('取消')
-          .layoutWeight(1).height(46)
-          .fontSize(15).fontColor($r('app.color.text_tertiary'))
-          .backgroundColor($r('app.color.bg_input')).borderRadius(23)
-          .onClick(() => { this.controller.close(); })
-
-        Button('确认修改')
-          .layoutWeight(1).height(46)
-          .fontSize(15).fontColor('#FFFFFF')
-          .backgroundColor('#4E8FDF').borderRadius(23)
-          .onClick(() => { this.onSubmit(this.oldPwd, this.newPwd, this.confirmPwd); })
-      }
-      .width('100%')
-    }
-    .padding(24)
-    .borderRadius(20)
-    .backgroundColor($r('app.color.bg_card'))
-    .width('85%')
-  }
-}
-
-@CustomDialog
-struct EditProfileDialog {
-  controller: CustomDialogController = new CustomDialogController({ builder: EditProfileDialog() });
-  @State nickname: string = '';
-  @State phone: string = '';
-  onSubmit: (nickname: string, phone: string) => void = () => {};
-
-  build() {
-    Column({ space: 16 }) {
-      Text('编辑资料')
-        .fontSize(18).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary'))
-        .width('100%').textAlign(TextAlign.Center)
-
-      TextInput({ placeholder: '昵称', text: this.nickname })
-        .fontSize(15).height(48)
-        .backgroundColor($r('app.color.bg_secondary')).borderRadius(10)
-        .onChange((v: string) => { this.nickname = v; })
-
-      TextInput({ placeholder: '手机号', text: this.phone })
-        .type(InputType.PhoneNumber)
-        .fontSize(15).height(48)
-        .backgroundColor($r('app.color.bg_secondary')).borderRadius(10)
-        .onChange((v: string) => { this.phone = v; })
-
-      Row({ space: 12 }) {
-        Button('取消')
-          .layoutWeight(1).height(46)
-          .fontSize(15).fontColor($r('app.color.text_tertiary'))
-          .backgroundColor($r('app.color.bg_input')).borderRadius(23)
-          .onClick(() => { this.controller.close(); })
-
-        Button('保存')
-          .layoutWeight(1).height(46)
-          .fontSize(15).fontColor('#FFFFFF')
-          .backgroundColor('#4E8FDF').borderRadius(23)
-          .onClick(() => { this.onSubmit(this.nickname, this.phone); })
-      }
-      .width('100%')
-    }
-    .padding(24)
-    .borderRadius(20)
-    .backgroundColor($r('app.color.bg_card'))
-    .width('85%')
-  }
-}
-
 // ────── 主页面 ──────
 interface MenuItemConfig {
   icon: string | Resource;
   label: string | Resource;
   action: () => void;
   isRed?: boolean;
+}
+
+interface StatCardConfig {
+  value: string;
+  label: string;
+  accent: string;
+  bg: string;
 }
 
 @Entry
@@ -125,36 +31,17 @@ export struct PersonalPage {
   @State heartValue: number = 0;
   @State fraudCount: number = 0;
   @State phone: string = '';
-  @State editProfileNickname: string = '';
-  @State editProfilePhone: string = '';
   @State avatarUrl: string = '';
   @State isUploadingAvatar: boolean = false;
   @State isRefreshing: boolean = false;
   @Prop topHeight: number = 0;
 
-  private editProfileController: CustomDialogController = new CustomDialogController({
-    builder: EditProfileDialog({
-      nickname: this.editProfileNickname,
-      phone: this.editProfilePhone,
-      onSubmit: (nickname: string, phone: string) => {
-        this.doUpdateProfile(nickname, phone);
-      }
-    }),
-    alignment: DialogAlignment.Center,
-    cornerRadius: 20
-  });
-
-  private changePwdController: CustomDialogController = new CustomDialogController({
-    builder: ChangePasswordDialog({
-      onSubmit: (oldPwd: string, newPwd: string, confirmPwd: string) => {
-        this.doChangePassword(oldPwd, newPwd, confirmPwd);
-      }
-    }),
-    alignment: DialogAlignment.Center,
-    cornerRadius: 20
-  });
-
   aboutToAppear(): void {
+    this.loadProfile();
+  }
+
+  onPageShow(): void {
+    // 从"设置"页返回时刷新，保证编辑资料后的昵称/手机号即时反映
     this.loadProfile();
   }
 
@@ -168,8 +55,6 @@ export struct PersonalPage {
       this.heartValue = session.heartValue;
       this.fraudCount = session.fraudCount;
       this.phone = session.phoneMasked || '';
-      this.editProfileNickname = this.name;
-      this.editProfilePhone = this.phone;
       this.avatarUrl = session.avatar ?? '';
     }
   }
@@ -193,7 +78,6 @@ export struct PersonalPage {
       await UserService.uploadAvatar(ctx, result.photoUris[0]);
       await this.loadProfile();
       promptAction.showToast({ message: '头像更新成功' });
-      // 触发下拉刷新动画，完成后自动收起
       this.isRefreshing = true;
       this.isRefreshing = false;
     } catch (error) {
@@ -201,99 +85,6 @@ export struct PersonalPage {
       promptAction.showToast({ message: '头像上传失败，请重试' });
     } finally {
       this.isUploadingAvatar = false;
-    }
-  }
-
-  async doUpdateProfile(nickname: string, phone: string): Promise<void> {
-    const nextNickname = nickname.trim();
-    const nextPhone = phone.trim();
-    if (!nextNickname) {
-      promptAction.showToast({ message: '昵称不能为空' });
-      return;
-    }
-    if (nextPhone && !/^1[3-9]\d{9}$/.test(nextPhone)) {
-      promptAction.showToast({ message: '手机号格式不正确' });
-      return;
-    }
-    try {
-      await UserService.updateProfile(getContext(this) as common.UIAbilityContext, nextNickname, nextPhone);
-      this.editProfileController.close();
-      this.name = nextNickname;
-      this.phone = nextPhone;
-      this.editProfileNickname = nextNickname;
-      this.editProfilePhone = nextPhone;
-      promptAction.showToast({ message: '资料更新成功' });
-    } catch (e) {
-      promptAction.showToast({ message: '资料更新失败，请稍后重试' });
-    }
-  }
-
-  async doChangePassword(oldPwd: string, newPwd: string, confirmPwd: string): Promise<void> {
-    if (!oldPwd || !newPwd || !confirmPwd) {
-      promptAction.showToast({ message: '请填写完整信息' });
-      return;
-    }
-    if (newPwd !== confirmPwd) {
-      promptAction.showToast({ message: '两次密码不一致' });
-      return;
-    }
-    if (newPwd.length < 6) {
-      promptAction.showToast({ message: '新密码至少 6 位' });
-      return;
-    }
-    try {
-      const success = await AuthService.changePassword(
-        getContext(this) as common.UIAbilityContext,
-        oldPwd,
-        newPwd
-      );
-      if (success) {
-        this.changePwdController.close();
-        promptAction.showToast({ message: '密码修改成功' });
-      } else {
-        promptAction.showToast({ message: '当前密码错误，请重试' });
-      }
-    } catch (e) {
-      promptAction.showToast({ message: '修改失败，请稍后重试' });
-    }
-  }
-
-  showAboutUs(): void {
-    AlertDialog.show({
-      title: '关于我们',
-      message: '校园失物招领\n版本 1.0.0\n\n致力于帮助同学们快速找回失物，让校园更温暖、更有爱。\n\n隐私政策：当前版本为占位说明，后续将补充正式链接。\n用户协议：当前版本为占位说明，后续将补充正式链接。\n\n如有问题请联系管理员。',
-      confirm: {
-        value: '我知道了',
-        action: () => {}
-      },
-      alignment: DialogAlignment.Center
-    });
-  }
-
-  showLogoutConfirm(): void {
-    AlertDialog.show({
-      title: '退出登录',
-      message: '确定要退出当前账号吗？',
-      primaryButton: {
-        value: '取消',
-        action: () => {}
-      },
-      secondaryButton: {
-        value: '退出',
-        fontColor: '#FF4D4F',
-        action: () => { this.logout(); }
-      },
-      alignment: DialogAlignment.Center
-    });
-  }
-
-  async logout(): Promise<void> {
-    try {
-      AuthService.clearSession(getContext(this) as common.UIAbilityContext);
-      promptAction.showToast({ message: '已退出登录' });
-      router.replaceUrl({ url: 'pages/LoginPage' });
-    } catch (error) {
-      console.error('退出登录失败:', JSON.stringify(error));
     }
   }
 
@@ -306,8 +97,8 @@ export struct PersonalPage {
         Scroll() {
           Column({ space: 16 }) {
 
-            // 用户卡片
-            Column({ space: 16 }) {
+            // ─── 用户卡片 ───
+            Column({ space: 18 }) {
               Row({ space: 16 }) {
 
                 // 头像区域（可点击上传）
@@ -358,50 +149,40 @@ export struct PersonalPage {
               }
               .width('100%')
 
-              Divider().color($r('app.color.divider')).opacity(0.5)
-
-              // 发布 / 认领统计
-              Row() {
-                Column({ space: 6 }) {
-                  Text(this.published.toString())
-                    .fontSize(26).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary'))
-                  Text('发布信息').fontSize(12).fontColor($r('app.color.text_caption'))
-                }.layoutWeight(1).alignItems(HorizontalAlign.Center)
-
-                Column().width(1).height(40).backgroundColor('#E5E5E5').opacity(0.5)
-
-                Column({ space: 6 }) {
-                  Text(this.claimed.toString())
-                    .fontSize(26).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary'))
-                  Text('已认领项目').fontSize(12).fontColor($r('app.color.text_caption'))
-                }.layoutWeight(1).alignItems(HorizontalAlign.Center)
+              // ─── 统计栏：单行 4 个柔色卡片 ───
+              Row({ space: 10 }) {
+                this.StatCard({
+                  value: this.published.toString(),
+                  label: '发布信息',
+                  accent: '#4E8FDF',
+                  bg: 'rgba(78,143,223,0.10)'
+                })
+                this.StatCard({
+                  value: this.claimed.toString(),
+                  label: '已认领',
+                  accent: '#4CAF50',
+                  bg: 'rgba(76,175,80,0.10)'
+                })
+                this.StatCard({
+                  value: this.heartValue.toString(),
+                  label: '热心值',
+                  accent: '#FF6B9D',
+                  bg: 'rgba(255,107,157,0.10)'
+                })
+                this.StatCard({
+                  value: this.fraudCount.toString(),
+                  label: '异常次数',
+                  accent: this.fraudCount > 0 ? '#FF9500' : '#9E9E9E',
+                  bg: this.fraudCount > 0 ? 'rgba(255,149,0,0.10)' : 'rgba(158,158,158,0.10)'
+                })
               }
-              .width('100%').padding({ left: 12, right: 12 })
-
-              Divider().color($r('app.color.divider')).opacity(0.5)
-
-              Row() {
-                Column({ space: 6 }) {
-                  Text(this.heartValue.toString())
-                    .fontSize(22).fontWeight(FontWeight.Bold).fontColor('#4E8FDF')
-                  Text('热心值').fontSize(12).fontColor($r('app.color.text_caption'))
-                }.layoutWeight(1).alignItems(HorizontalAlign.Center)
-
-                Column().width(1).height(36).backgroundColor('#E5E5E5').opacity(0.5)
-
-                Column({ space: 6 }) {
-                  Text(this.fraudCount.toString())
-                    .fontSize(22).fontWeight(FontWeight.Bold).fontColor(this.fraudCount > 0 ? '#FF9500' : '#4CAF50')
-                  Text('异常次数').fontSize(12).fontColor($r('app.color.text_caption'))
-                }.layoutWeight(1).alignItems(HorizontalAlign.Center)
-              }
-              .width('100%').padding({ left: 12, right: 12, top: 14 })
+              .width('100%')
             }
             .width('100%').padding(20)
             .backgroundColor($r('app.color.bg_card')).borderRadius(16)
             .shadow({ radius: 10, color: 'rgba(0,0,0,0.05)', offsetY: 4 })
 
-            // 功能菜单
+            // ─── 功能菜单 ───
             Column() {
               this.OptimizedMenuItem({
                 icon: $r('app.media.send'),
@@ -415,7 +196,7 @@ export struct PersonalPage {
                   }
                 }
               })
-              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56 ,right:56})
+              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56, right: 56 })
               this.OptimizedMenuItem({
                 icon: $r('app.media.frontpage'),
                 label: '我的收藏',
@@ -423,59 +204,23 @@ export struct PersonalPage {
                   router.pushUrl({ url: 'pages/MyLikedPage' });
                 }
               })
-              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56 ,right:56})
-              this.OptimizedMenuItem({
-                icon: $r('app.media.my'),
-                label: '编辑资料',
-                action: (): void => {
-                  this.editProfileNickname = this.name;
-                  this.editProfilePhone = this.phone;
-                  this.editProfileController.open();
-                }
-              })
-              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56 ,right:56})
-              this.OptimizedMenuItem({
-                icon: $r('app.media.message'),
-                label: '我的认领申请',
-                action: (): void => {
-                  if (AppStorage.get<boolean>('isTabletMode') === true) {
-                    AppStorage.setOrCreate('tabletPrevRightType', 'personal');
-                    AppStorage.setOrCreate('tabletRightType', 'myClaimed');
-                  } else {
-                    router.pushUrl({ url: 'pages/MyClaimedPage' });
-                  }
-                }
-              })
-              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56,right:56 })
+              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56, right: 56 })
               this.OptimizedMenuItem({
                 icon: $r('app.media.bill'),
                 label: '我的举报',
                 action: (): void => { router.pushUrl({ url: 'pages/MyReportsPage' }); }
               })
-              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56,right:56 })
-              this.OptimizedMenuItem({
-                icon: $r('app.media.key'),
-                label: '修改密码',
-                action: (): void => { this.changePwdController.open(); }
-              })
-              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56,right:56 })
-              this.OptimizedMenuItem({
-                icon: $r('app.media.bill'),
-                label: '关于我们',
-                action: (): void => { this.showAboutUs(); }
-              })
-              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56 ,right:56})
+              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56, right: 56 })
               this.OptimizedMenuItem({
                 icon: $r('app.media.message'),
                 label: '意见反馈',
                 action: (): void => { router.pushUrl({ url: 'pages/FeedbackPage' }); }
               })
-              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56 ,right:56})
+              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56, right: 56 })
               this.OptimizedMenuItem({
-                icon: $r('app.media.logout'),
-                label: '退出登录',
-                action: (): void => { this.showLogoutConfirm(); },
-                isRed: true
+                icon: $r('app.media.my'),
+                label: '设置',
+                action: (): void => { router.pushUrl({ url: 'pages/SettingsPage' }); }
               })
             }
             .width('100%').backgroundColor($r('app.color.bg_card')).borderRadius(16)
@@ -491,6 +236,21 @@ export struct PersonalPage {
     }
     .width('100%').height('100%').backgroundColor($r('app.color.bg_page'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+  }
+
+  @Builder
+  StatCard(config: StatCardConfig) {
+    Column({ space: 6 }) {
+      Text(config.value)
+        .fontSize(22).fontWeight(FontWeight.Bold).fontColor(config.accent)
+      Text(config.label)
+        .fontSize(12).fontColor($r('app.color.text_caption'))
+    }
+    .layoutWeight(1)
+    .padding({ top: 14, bottom: 14 })
+    .backgroundColor(config.bg)
+    .borderRadius(12)
+    .alignItems(HorizontalAlign.Center)
   }
 
   @Builder

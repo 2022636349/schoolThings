@@ -65,7 +65,6 @@
       <el-descriptions-item label="热心值">{{ currentRow.heartValue }}</el-descriptions-item>
       <el-descriptions-item label="异常值">{{ currentRow.fraudValue }}</el-descriptions-item>
       <el-descriptions-item label="发布数">{{ currentRow.postCount }}</el-descriptions-item>
-      <el-descriptions-item label="认领数">{{ currentRow.claimCount }}</el-descriptions-item>
       <el-descriptions-item label="归还数">{{ currentRow.returnCount }}</el-descriptions-item>
       <el-descriptions-item label="获赞数">{{ currentRow.likeReceived }}</el-descriptions-item>
     </el-descriptions>

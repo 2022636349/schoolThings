@@ -38,7 +38,7 @@ export function getStatusLabel(type: string, status: DisplayStatus): string {
   if (status === 'offline') return '已下架';
   if (status === 'pending') return '申请待确认';
   if (status === 'claimed') {
-    return type === 'lost' ? '已找到' : '已认领';
+    return '已认领';
   }
   // active
   return type === 'lost' ? '寻物中' : '招领中';

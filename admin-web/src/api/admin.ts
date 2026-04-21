@@ -11,16 +11,13 @@ export interface DashboardTrend {
   date: string
   userCount: number
   itemCount: number
-  claimCount: number
   reportCount: number
 }
 
 export interface DashboardStats {
   userCount: number
   itemCount: number
-  claimCount: number
   reportCount: number
-  pendingClaimCount: number
   pendingReportCount: number
   trends: DashboardTrend[]
   recentAnnouncements: AdminAnnouncement[]
@@ -38,7 +35,6 @@ export interface AdminUser {
   heartValue: number
   fraudValue: number
   postCount: number
-  claimCount: number
   returnCount: number
   likeReceived: number
 }
@@ -70,35 +66,34 @@ export interface AdminAnnouncement {
   viewCount: number
 }
 
-export interface AdminClaim {
-  id: number
-  itemId: number
-  itemTitle: string
-  itemStatus: string
-  description: string
-  contact: string
-  status: string
-  claimantId: string
-  claimantName: string
-  publisherId: string
-  publisherName: string
-  reviewRemark: string
-  createdAt: number
-  approvedAt: number
-}
-
 export interface AdminReport {
   id: number
   targetType: string
   targetId: number
   targetTitle: string
   reporterId: string
+  reporterStudentNo: string
   reporterName: string
+  reporterPhone: string
+  publisherId: string
+  publisherStudentNo: string
+  publisherName: string
+  publisherPhone: string
+  claimantId: string
+  claimantStudentNo: string
+  claimantName: string
+  claimantPhone: string
   reason: string
   description: string
   evidenceUrls: string
   status: string
   resolution: string
+  reporterHeartValue: number
+  reporterFraudValue: number
+  publisherHeartValue: number
+  publisherFraudValue: number
+  claimantHeartValue: number
+  claimantFraudValue: number
   createdAt: number
 }
 
@@ -188,16 +183,10 @@ export const adminApi = {
   exportOverview(): Promise<string> {
     return http.get('/admin/export/overview') as unknown as Promise<string>
   },
-  claims(): Promise<AdminClaim[]> {
-    return http.get('/admin/claims') as unknown as Promise<AdminClaim[]>
-  },
-  reviewClaim(id: number, status: string, remark?: string): Promise<void> {
-    return http.post(`/admin/claims/${id}/status`, { status, remark }) as unknown as Promise<void>
-  },
   reports(): Promise<AdminReport[]> {
     return http.get('/admin/reports') as unknown as Promise<AdminReport[]>
   },
-  reviewReport(id: number, data: { status: string; resolution?: string; itemStatus?: string; userStatus?: number }): Promise<void> {
+  reviewReport(id: number, data: { status: string; resolution?: string; itemStatus?: string; reporterHeartDelta?: number; reporterFraudDelta?: number; publisherHeartDelta?: number; publisherFraudDelta?: number; claimantHeartDelta?: number; claimantFraudDelta?: number }): Promise<void> {
     return http.post(`/admin/reports/${id}/status`, data) as unknown as Promise<void>
   }
 }

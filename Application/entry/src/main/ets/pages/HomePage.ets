@@ -7,7 +7,6 @@ import {MyPostsPage} from './MyPostsPage'
 import {FrontPage} from './FrontPage'
 import {RankingPage} from './RankingPage'
 import {WarningPage} from './WarningPage'
-import {MyClaimedPage} from './MyClaimedPage'
 import { router, window, display } from '@kit.ArkUI';
 import { ChatService } from '../services/ChatService';
 import { AuthService } from '../services/AuthService';
@@ -40,6 +39,8 @@ struct HomePage {
   @StorageProp('tabletRightType') @Watch('onRightPanelChange') rightPanelType: string = 'none';
   @StorageProp('tabletRightParams') rightPanelParams: string = '';
   @StorageProp('widgetAction') @Watch('onWidgetAction') widgetAction: string = '';
+  // 全局网络连通性（由 NetworkMonitor 写入）
+  @StorageProp('isOnline') isOnline: boolean = true;
   private unreadPollTimer: number = -1;
   private lastNotifyTime: number = 0;
   private currentUserId: string = '';
@@ -310,24 +311,33 @@ struct HomePage {
   buildPhoneLayout() {
     Stack({ alignContent: Alignment.Bottom }) {
 
-      Tabs({ barPosition: BarPosition.End, index: this.currentIndex }) {
-        TabContent() {
-          FrontPage({ topHeight: this.topHeight, bottomHeight: this.bottomHeight })
+      Column() {
+        // 离线横幅（覆盖状态栏区域）
+        if (!this.isOnline) {
+          this.buildOfflineBanner()
         }
-        TabContent() {
-          HallPage({ topHeight: this.topHeight, bottomHeight: this.bottomHeight, refreshTrigger: this.mainPageRefreshTrigger })
+
+        Tabs({ barPosition: BarPosition.End, index: this.currentIndex }) {
+          TabContent() {
+            FrontPage({ topHeight: this.getEffectiveTopHeight(), bottomHeight: this.bottomHeight })
+          }
+          TabContent() {
+            HallPage({ topHeight: this.getEffectiveTopHeight(), bottomHeight: this.bottomHeight, refreshTrigger: this.mainPageRefreshTrigger })
+          }
+          TabContent() {
+            MessagePage({ topHeight: this.getEffectiveTopHeight() })
+          }
+          TabContent() {
+            PersonalPage({ topHeight: this.getEffectiveTopHeight() })
+          }
         }
-        TabContent() {
-          MessagePage({ topHeight: this.topHeight })
-        }
-        TabContent() {
-          PersonalPage({ topHeight: this.topHeight })
-        }
+        .scrollable(false)
+        .onChange((index: number) => { this.currentIndex = index })
+        .animationDuration(0)
+        .barHeight(0)
+        .width('100%')
+        .layoutWeight(1)
       }
-      .scrollable(false)
-      .onChange((index: number) => { this.currentIndex = index })
-      .animationDuration(0)
-      .barHeight(0)
       .width('100%')
       .height('100%')
 
@@ -342,68 +352,103 @@ struct HomePage {
   // ── 平板布局 ──
   @Builder
   buildTabletLayout() {
-    Row() {
-      Stack({ alignContent: Alignment.Bottom }) {
-        if (this.currentIndex === 0) {
-          FrontPage({ topHeight: this.topHeight, bottomHeight: this.bottomHeight })
-        } else {
-          HallPage({ topHeight: this.topHeight, bottomHeight: this.bottomHeight, refreshTrigger: this.mainPageRefreshTrigger })
-        }
-
-        // 导航胶囊（含 + 按钮）
-        this.buildNavCapsuleWithAdd()
+    Column() {
+      if (!this.isOnline) {
+        this.buildOfflineBanner()
       }
-      .width('40%')
-      .height('100%')
-      .onTouch((event: TouchEvent) => {
-        if (event.type === TouchType.Down && this.currentIndex > 1) {
-          this.currentIndex = 0;
-        }
-      })
 
-      Column()
-        .width(0.5)
-        .height('100%')
-        .backgroundColor($r('app.color.divider'))
-
-      Column() {
-        if (this.rightPanelType === 'message') {
-          MessagePage({ topHeight: this.topHeight })
-        } else if (this.rightPanelType === 'personal') {
-          PersonalPage({ topHeight: this.topHeight })
-        } else if (this.rightPanelType === 'detail') {
-          DetailPage({ paramsJson: this.rightPanelParams })
-        } else if (this.rightPanelType === 'chat') {
-          ChatPage({ paramsJson: this.rightPanelParams })
-        } else if (this.rightPanelType === 'myPosts') {
-          MyPostsPage()
-        } else if (this.rightPanelType === 'ranking') {
-          RankingPage()
-        } else if (this.rightPanelType === 'warning') {
-          WarningPage()
-        } else if (this.rightPanelType === 'myClaimed') {
-          MyClaimedPage()
-        } else {
-          Column() {
-            Image($r('app.media.startIcon'))
-              .width(64).height(64).opacity(0.15)
-              .margin({ bottom: 16 })
-            Text('点击左侧内容查看详情')
-              .fontSize(15)
-              .fontColor($r('app.color.text_hint'))
+      Row() {
+        Stack({ alignContent: Alignment.Bottom }) {
+          if (this.currentIndex === 0) {
+            FrontPage({ topHeight: this.getEffectiveTopHeight(), bottomHeight: this.bottomHeight })
+          } else {
+            HallPage({ topHeight: this.getEffectiveTopHeight(), bottomHeight: this.bottomHeight, refreshTrigger: this.mainPageRefreshTrigger })
           }
-          .width('100%')
-          .height('100%')
-          .justifyContent(FlexAlign.Center)
+
+          // 导航胶囊（含 + 按钮）
+          this.buildNavCapsuleWithAdd()
         }
+        .width('40%')
+        .height('100%')
+        .onTouch((event: TouchEvent) => {
+          if (event.type === TouchType.Down && this.currentIndex > 1) {
+            this.currentIndex = 0;
+          }
+        })
+
+        Column()
+          .width(0.5)
+          .height('100%')
+          .backgroundColor($r('app.color.divider'))
+
+        Column() {
+          if (this.rightPanelType === 'message') {
+            MessagePage({ topHeight: this.getEffectiveTopHeight() })
+          } else if (this.rightPanelType === 'personal') {
+            PersonalPage({ topHeight: this.getEffectiveTopHeight() })
+          } else if (this.rightPanelType === 'detail') {
+            DetailPage({ paramsJson: this.rightPanelParams })
+          } else if (this.rightPanelType === 'chat') {
+            ChatPage({ paramsJson: this.rightPanelParams })
+          } else if (this.rightPanelType === 'myPosts') {
+            MyPostsPage()
+          } else if (this.rightPanelType === 'ranking') {
+            RankingPage()
+          } else if (this.rightPanelType === 'warning') {
+            WarningPage()
+          } else {
+            Column() {
+              Image($r('app.media.startIcon'))
+                .width(64).height(64).opacity(0.15)
+                .margin({ bottom: 16 })
+              Text('点击左侧内容查看详情')
+                .fontSize(15)
+                .fontColor($r('app.color.text_hint'))
+            }
+            .width('100%')
+            .height('100%')
+            .justifyContent(FlexAlign.Center)
+          }
+        }
+        .layoutWeight(1)
+        .height('100%')
+        .backgroundColor($r('app.color.bg_page'))
       }
+      .width('100%')
       .layoutWeight(1)
-      .height('100%')
-      .backgroundColor($r('app.color.bg_page'))
     }
     .width('100%')
     .height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+  }
+
+  // 离线时，子页不再预留状态栏高度（横幅已占用该区域）
+  private getEffectiveTopHeight(): number {
+    return this.isOnline ? this.topHeight : 0;
+  }
+
+  // 离线横幅：延伸到状态栏，醒目提示网络已断开
+  @Builder
+  buildOfflineBanner() {
+    Column() {
+      // 状态栏占位：让橙色背景一直顶到屏幕顶部
+      Column().width('100%').height(this.topHeight)
+
+      Row({ space: 8 }) {
+        Text('📵')
+          .fontSize(14)
+        Text('网络已断开，请检查网络连接')
+          .fontSize(13)
+          .fontColor('#FFFFFF')
+          .fontWeight(FontWeight.Medium)
+      }
+      .width('100%')
+      .height(32)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(VerticalAlign.Center)
+    }
+    .width('100%')
+    .backgroundColor('#FF6B35')
   }
 
   // ── 4 tab 胶囊 + 中央凸起 + 按钮 ──

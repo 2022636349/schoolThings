@@ -89,8 +89,11 @@ public class ItemServiceImpl extends ServiceImpl<ItemMapper, Item> implements It
     @Override
     public ItemPageVO listByType(String type, Long lastId, int limit) {
         LambdaQueryWrapper<Item> qw = new LambdaQueryWrapper<>();
-        if (!"all".equalsIgnoreCase(type)) {
+        if (!"all".equalsIgnoreCase(type) && !"claimed".equalsIgnoreCase(type)) {
             qw.eq(Item::getType, type);
+        }
+        if ("claimed".equalsIgnoreCase(type)) {
+            qw.eq(Item::getStatus, "claimed");
         }
         if (lastId != null && lastId > 0) {
             qw.lt(Item::getId, lastId);
@@ -205,6 +208,9 @@ public class ItemServiceImpl extends ServiceImpl<ItemMapper, Item> implements It
         if (item == null) throw new BusinessException(ResultCode.ITEM_NOT_FOUND);
         if (!item.getPublisherId().equals(currentUserId)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "无权删除他人物品");
+        }
+        if ("claimed".equals(item.getStatus())) {
+            throw new BusinessException(ResultCode.ITEM_CLAIMED_DELETE_FORBIDDEN);
         }
         this.removeById(itemId);
         // 媒体与点赞明细级联删除（物理删）
@@ -330,14 +336,20 @@ public class ItemServiceImpl extends ServiceImpl<ItemMapper, Item> implements It
         if (items == null || items.isEmpty()) return new ArrayList<>();
 
         Set<Long> publisherIds = new HashSet<>();
+        Set<Long> claimedByIds = new HashSet<>();
         List<Long> itemIds = new ArrayList<>();
         for (Item it : items) {
             publisherIds.add(it.getPublisherId());
+            if (it.getClaimedBy() != null) {
+                claimedByIds.add(it.getClaimedBy());
+            }
             itemIds.add(it.getId());
         }
 
         // 发布者 map
-        Map<String, User> userMap = userService.batchGetByIds(new ArrayList<>(publisherIds));
+        Set<Long> allUserIds = new HashSet<>(publisherIds);
+        allUserIds.addAll(claimedByIds);
+        Map<String, User> userMap = userService.batchGetByIds(new ArrayList<>(allUserIds));
 
         // 媒体 map: itemId → list
         Map<Long, List<MediaDTO>> mediaMap = new HashMap<>();
@@ -378,6 +390,8 @@ public class ItemServiceImpl extends ServiceImpl<ItemMapper, Item> implements It
             vo.setLikeCount(it.getLikeCount() == null ? 0 : it.getLikeCount());
             vo.setStatus(StrUtil.blankToDefault(it.getStatus(), "active"));
             vo.setClaimedBy(it.getClaimedBy() == null ? null : String.valueOf(it.getClaimedBy()));
+            User claimedBy = it.getClaimedBy() == null ? null : userMap.get(String.valueOf(it.getClaimedBy()));
+            vo.setClaimedByStudentNo(claimedBy == null ? null : claimedBy.getStudentNo());
             vo.setLostTime(toMillis(it.getLostTime()));
             result.add(vo);
         }

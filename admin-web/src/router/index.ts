@@ -5,7 +5,6 @@ import DashboardPage from '../views/DashboardPage.vue'
 import UsersPage from '../views/UsersPage.vue'
 import ItemsPage from '../views/ItemsPage.vue'
 import AnnouncementsPage from '../views/AnnouncementsPage.vue'
-import ClaimsPage from '../views/ClaimsPage.vue'
 import ReportsPage from '../views/ReportsPage.vue'
 import FeedbacksPage from '../views/FeedbacksPage.vue'
 import ChatSessionsPage from '../views/ChatSessionsPage.vue'
@@ -25,7 +24,6 @@ const router = createRouter({
         { path: '/users', component: UsersPage },
         { path: '/items', component: ItemsPage },
         { path: '/announcements', component: AnnouncementsPage },
-        { path: '/claims', component: ClaimsPage },
         { path: '/reports', component: ReportsPage },
         { path: '/feedbacks', component: FeedbacksPage },
         { path: '/chat-sessions', component: ChatSessionsPage }

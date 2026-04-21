@@ -231,6 +231,7 @@ export struct ItemCardView {
       p['likeCount'] = this.item.likeCount;
       p['status'] = this.item.status;
       p['claimedBy'] = this.item.claimedBy || '';
+      p['claimedByStudentNo'] = this.item.claimedByStudentNo || '';
       p['lostTime'] = this.item.lostTime;
       if (AppStorage.get<boolean>('isTabletMode') === true) {
         const cur = AppStorage.get<string>('tabletRightType') || 'none';

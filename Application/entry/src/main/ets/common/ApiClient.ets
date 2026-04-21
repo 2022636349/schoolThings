@@ -3,6 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { promptAction, router } from '@kit.ArkUI';
 import { AppConfig } from './AppConfig';
 import { Session } from './Session';
+import { NetworkMonitor } from './NetworkMonitor';
 
 /**
  * 统一 HTTP 客户端
@@ -96,6 +97,10 @@ export class ApiClient {
   }
 
   private static handleSessionExpired(ctx?: common.UIAbilityContext): void {
+    // 离线状态下，401/403 很可能是网络抖动，不要把用户踢回登录页
+    if (!NetworkMonitor.isOnline()) {
+      return;
+    }
     const resolvedCtx = ApiClient.resolveContext(ctx);
     if (resolvedCtx) {
       Session.clear(resolvedCtx);
@@ -141,7 +146,19 @@ export class ApiClient {
         options.extraData = JSON.stringify(body);
       }
 
-      const resp = await httpRequest.request(url, options);
+      // 单独捕获传输层异常（DNS 失败、无网络、超时、连接被重置等）
+      let resp: http.HttpResponse;
+      try {
+        resp = await httpRequest.request(url, options);
+      } catch (e) {
+        // 传输层异常 → 通知 NetworkMonitor 进入离线态并弹提示
+        NetworkMonitor.reportRequestFailure();
+        throw new ApiError(-1, '网络连接失败，请检查网络');
+      }
+
+      // 能收到响应说明链路通畅
+      NetworkMonitor.reportRequestSuccess();
+
       const status = resp.responseCode;
       const raw = (typeof resp.result === 'string') ? resp.result : JSON.stringify(resp.result);
 

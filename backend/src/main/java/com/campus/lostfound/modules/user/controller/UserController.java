@@ -176,7 +176,7 @@ public class UserController {
         vo.setName(u.getNickname());
         vo.setAvatar(u.getAvatar());
         vo.setPublished(stat != null && stat.getPostCount() != null ? stat.getPostCount() : 0);
-        vo.setClaimed(stat != null && stat.getClaimCount() != null ? stat.getClaimCount() : 0);
+        vo.setClaimed(0);
         vo.setHeartValue(stat != null && stat.getHeartValue() != null ? stat.getHeartValue() : 0);
         vo.setFraudCount(stat != null && stat.getFraudValue() != null ? stat.getFraudValue() : 0);
         vo.setPhoneMasked(maskPhone(u.getPhone()));

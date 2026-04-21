@@ -20,7 +20,6 @@
         <el-table-column prop="date" label="日期" width="100" />
         <el-table-column prop="userCount" label="新增用户" />
         <el-table-column prop="itemCount" label="新增帖子" />
-        <el-table-column prop="claimCount" label="新增认领" />
         <el-table-column prop="reportCount" label="新增举报" />
       </el-table>
     </el-card>
@@ -67,9 +66,7 @@ const trendRows = ref<DashboardTrend[]>([])
 const stats = reactive<DashboardStats>({
   userCount: 0,
   itemCount: 0,
-  claimCount: 0,
   reportCount: 0,
-  pendingClaimCount: 0,
   pendingReportCount: 0,
   trends: [],
   recentAnnouncements: [],
@@ -79,9 +76,7 @@ const stats = reactive<DashboardStats>({
 const cards = reactive([
   { label: '用户总数', value: 0 },
   { label: '帖子总数', value: 0 },
-  { label: '认领申请', value: 0 },
   { label: '举报数', value: 0 },
-  { label: '待处理认领', value: 0 },
   { label: '待处理举报', value: 0 }
 ])
 
@@ -98,10 +93,8 @@ const loadData = async () => {
     trendRows.value = data.trends || []
     cards[0].value = asNumber(data.userCount)
     cards[1].value = asNumber(data.itemCount)
-    cards[2].value = asNumber(data.claimCount)
-    cards[3].value = asNumber(data.reportCount)
-    cards[4].value = asNumber(data.pendingClaimCount)
-    cards[5].value = asNumber(data.pendingReportCount)
+    cards[2].value = asNumber(data.reportCount)
+    cards[3].value = asNumber(data.pendingReportCount)
   } catch (error) {
     ElMessage.error('仪表盘数据加载失败')
     console.error('dashboardStats failed', error)

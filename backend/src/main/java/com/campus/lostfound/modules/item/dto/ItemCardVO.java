@@ -24,5 +24,6 @@ public class ItemCardVO {
     private Integer likeCount;
     private String status;               // active / pending / claimed / warning / offline
     private String claimedBy;            // 认领人 userId（字符串 / null）
+    private String claimedByStudentNo;   // 认领人学号（字符串 / null）
     private Long lostTime;               // 毫秒时间戳 / 0
 }

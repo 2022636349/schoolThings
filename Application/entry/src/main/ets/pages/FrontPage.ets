@@ -109,6 +109,7 @@ export struct FrontPage {
     p['likeCount'] = item.likeCount || 0;
     p['status'] = item.status || 'active';
     p['claimedBy'] = item.claimedBy || '';
+    p['claimedByStudentNo'] = item.claimedByStudentNo || '';
     p['lostTime'] = item.lostTime || 0;
     return p;
   }

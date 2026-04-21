@@ -16,5 +16,6 @@ export class HallItemData {
   likeCount: number = 0;
   status: string = '';
   claimedBy: string = '';
+  claimedByStudentNo: string = '';
   lostTime: number = 0;
 }

@@ -7,7 +7,6 @@
         <el-menu-item index="/users">用户管理</el-menu-item>
         <el-menu-item index="/items">帖子管理</el-menu-item>
         <el-menu-item index="/announcements">公告管理</el-menu-item>
-        <el-menu-item index="/claims">认领申请</el-menu-item>
         <el-menu-item index="/reports">举报管理</el-menu-item>
         <el-menu-item index="/feedbacks">反馈管理</el-menu-item>
         <el-menu-item index="/chat-sessions">会话查看</el-menu-item>

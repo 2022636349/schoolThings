@@ -20,6 +20,7 @@ export interface ItemCard {
   likeCount: number;
   status: string;
   claimedBy: string | null;
+  claimedByStudentNo: string | null;
   lostTime: number;
 }
 
@@ -40,6 +41,7 @@ export interface ItemCardRaw {
   likeCount: number;
   status: string;
   claimedBy: string | null;
+  claimedByStudentNo: string | null;
   lostTime: number;
 }
 
@@ -76,6 +78,7 @@ function toCard(raw: ItemCardRaw): ItemCard {
     likeCount: raw.likeCount || 0,
     status: raw.status || 'active',
     claimedBy: raw.claimedBy || null,
+    claimedByStudentNo: raw.claimedByStudentNo || null,
     lostTime: raw.lostTime || 0
   } as ItemCard;
 }

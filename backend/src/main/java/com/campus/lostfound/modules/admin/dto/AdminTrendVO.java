@@ -7,6 +7,5 @@ public class AdminTrendVO {
     private String date;
     private Long userCount;
     private Long itemCount;
-    private Long claimCount;
     private Long reportCount;
 }

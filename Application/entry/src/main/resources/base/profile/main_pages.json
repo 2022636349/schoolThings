@@ -17,9 +17,9 @@
     "pages/FrontPage",
     "pages/RankingPage",
     "pages/WarningPage",
-    "pages/MyClaimedPage",
     "pages/MyLikedPage",
     "pages/MyReportsPage",
-    "pages/FeedbackPage"
+    "pages/FeedbackPage",
+    "pages/SettingsPage"
   ]
 }

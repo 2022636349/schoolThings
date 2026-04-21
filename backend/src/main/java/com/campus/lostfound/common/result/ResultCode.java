@@ -28,6 +28,7 @@ public enum ResultCode {
     // 业务
     ITEM_NOT_FOUND(4001, "物品不存在"),
     CLAIM_ALREADY_EXISTS(4002, "已提交过认领申请"),
+    ITEM_CLAIMED_DELETE_FORBIDDEN(4003, "已认领的帖子不能删除"),
 
     // 系统
     INTERNAL_ERROR(9000, "系统内部错误"),
