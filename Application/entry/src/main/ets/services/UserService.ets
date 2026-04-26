@@ -30,10 +30,7 @@ interface ProfileUpdateBody {
 }
 
 export class UserService {
-  /**
-   * 批量按 userId 查询发布者信息（卡片展示用）
-   * @param ids userId 数组（已去重）
-   */
+
   static async getPublisherInfoByIds(ids: string[]): Promise<Record<string, PublisherInfo>> {
     const result: Record<string, PublisherInfo> = {};
     if (!ids || ids.length === 0) return result;
@@ -59,16 +56,11 @@ export class UserService {
     Session.updateProfile(context, nickname, null);
   }
 
-  /**
-   * 上传头像文件并把 URL 写回后端
-   * @returns 头像公开 URL
-   */
   static async uploadAvatar(context: common.UIAbilityContext, localUri: string): Promise<string> {
     if (!Session.isLoggedIn(context)) {
       throw new Error('用户未登录');
     }
 
-    // 1. picker URI → 复制到 cacheDir → 读成 base64
     const fileName = `avatar_${Date.now()}.jpg`;
     const cacheFilePath = `${context.cacheDir}/${fileName}`;
     const srcFile = fileIo.openSync(localUri, fileIo.OpenMode.READ_ONLY);
@@ -88,11 +80,9 @@ export class UserService {
       const base64 = new util.Base64Helper().encodeToStringSync(new Uint8Array(buf));
       const url = await ApiClient.uploadBase64('avatars', fileName, base64, 'image/jpeg', context);
 
-      // 把 URL 写回后端用户信息
       const body: AvatarBody = { url: url };
       await ApiClient.post<string>('/user/avatar', body, context);
 
-      // 本地缓存同步
       Session.updateProfile(context, null, url);
       Session.saveAvatarVersion(context, String(Date.now()));
       return url;

@@ -8,7 +8,7 @@ const FORM_IDS_STORE = 'widget_form_ids';
 export default class EntryFormAbility extends FormExtensionAbility {
 
   onAddForm(want: Want): formBindingData.FormBindingData {
-    // 保存 formId 以便主应用主动推送更新
+
     const formId = want.parameters?.['ohos.extra.param.key.form_identity'] as string;
     if (formId) {
       this.saveFormId(formId);
@@ -30,7 +30,7 @@ export default class EntryFormAbility extends FormExtensionAbility {
   }
 
   onFormEvent(formId: string, message: string): void {
-    // 处理卡片事件（如需要）
+
     console.info('[EntryFormAbility] onFormEvent:', formId, message);
   }
 
@@ -39,15 +39,27 @@ export default class EntryFormAbility extends FormExtensionAbility {
       const store = preferences.getPreferencesSync(this.context, { name: WIDGET_STORE });
       const unreadCount = store.getSync('unreadCount', 0) as number;
       const latestMessage = store.getSync('latestMessage', '') as string;
+      const hotTitle = store.getSync('hotTitle', '') as string;
+      const announcementTitle = store.getSync('announcementTitle', '') as string;
+      const hotItemId = store.getSync('hotItemId', '') as string;
+      const announcementId = store.getSync('announcementId', '') as string;
       const data: Record<string, Object> = {};
       data['unreadCount'] = unreadCount;
       data['latestMessage'] = latestMessage;
+      data['hotTitle'] = hotTitle;
+      data['announcementTitle'] = announcementTitle;
+      data['hotItemId'] = hotItemId;
+      data['announcementId'] = announcementId;
       return data;
     } catch (e) {
       console.error('[EntryFormAbility] getWidgetData failed:', e);
       const data: Record<string, Object> = {};
       data['unreadCount'] = 0;
       data['latestMessage'] = '';
+      data['hotTitle'] = '';
+      data['announcementTitle'] = '';
+      data['hotItemId'] = '';
+      data['announcementId'] = '';
       return data;
     }
   }

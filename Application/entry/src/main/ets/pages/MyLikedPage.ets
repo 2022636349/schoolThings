@@ -1,6 +1,7 @@
 import { router, window } from '@kit.ArkUI';
 import { ItemCard, ItemService } from '../services/ItemService';
 import { ItemCardView } from './Card';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
 @Entry
 @Component
@@ -29,7 +30,8 @@ export struct MyLikedPage {
   }
 
   build() {
-    Column() {
+    Stack() {
+      Column() {
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -38,7 +40,16 @@ export struct MyLikedPage {
         .width(40).height(40).borderRadius(20)
         .backgroundColor($r('app.color.bg_secondary'))
         .justifyContent(FlexAlign.Center)
-        .onClick(() => { router.back() })
+        .onClick(() => {
+          if (AppStorage.get<boolean>('isTabletMode') === true) {
+            AppStorage.setOrCreate('tabletRightType', 'none');
+            AppStorage.setOrCreate('tabletRightParams', '');
+            AppStorage.setOrCreate('tabletPrevRightType', 'none');
+            AppStorage.setOrCreate('tabletPrevRightParams', '');
+          } else {
+            router.back();
+          }
+        })
 
         Text('我的收藏')
           .fontSize(17).fontWeight(FontWeight.Medium)
@@ -86,5 +97,10 @@ export struct MyLikedPage {
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.bg_page'))
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

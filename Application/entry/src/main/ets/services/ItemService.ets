@@ -1,21 +1,20 @@
 import { ApiClient } from '../common/ApiClient';
 
 export interface MediaItem {
-  type: string;  // 'image' | 'video'
+  type: string;  
   url: string;
 }
 
 export interface ItemCard {
   itemId: number;
-  type: string;            // lost / found / claimed
+  type: string;            
   text: string;
-  publishTime: string;     // "X 分钟前"
+  publishTime: string;     
   publishId: string;
   publisherName: string;
   publisherAvatar: string;
   mediaList: MediaItem[];
 
-  // Phase 3 扩展
   category: string;
   likeCount: number;
   status: string;
@@ -24,7 +23,6 @@ export interface ItemCard {
   lostTime: number;
 }
 
-/** 后端返回的原始卡片数据 */
 export interface ItemCardRaw {
   itemId: number;
   type: string;
@@ -123,7 +121,7 @@ interface UpdateStatusBody {
 }
 
 export class ItemService {
-  // 按类型分页状态：后端返回 lastId，前端把它缓存在这里，实现 "无限滚动" 语义
+
   private static readonly pageSize: number = 10;
   private static isLoading: boolean = false;
   private static pageStates: Record<ItemListType, number> = {
@@ -202,9 +200,6 @@ export class ItemService {
     }
   }
 
-  /**
-   * 按分类分页查询
-   */
   static async queryByCategory(category: string, limit: number = 20, lastItemId: number = 0): Promise<ItemCard[]> {
     try {
       const params: ItemCategoryQuery = (category && category.length > 0)
@@ -262,7 +257,6 @@ export class ItemService {
     }
   }
 
-  /** 我发布的全部物品（不分页，一次拿回） */
   static async listMine(): Promise<ItemCard[]> {
     try {
       const all: ItemCard[] = [];
@@ -283,7 +277,6 @@ export class ItemService {
     }
   }
 
-  /** 物品详情 */
   static async detail(itemId: number): Promise<ItemCard | null> {
     try {
       const r = await ApiClient.get<ItemCardRaw>(`/items/${itemId}`);

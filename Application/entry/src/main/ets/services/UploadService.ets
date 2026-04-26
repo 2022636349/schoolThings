@@ -7,9 +7,7 @@ interface UploadUrlQuery extends Record<string, string | number | boolean | null
   path: string;
 }
 
-/**
- * 文件上传封装：picker URI → base64 → 后端 /upload/base64 → 公开 URL
- */
+
 export class UploadService {
   /**
    * 上传文件到后端
@@ -23,7 +21,6 @@ export class UploadService {
     localUri: string,
     cloudPath: string
   ): Promise<string> {
-    // 1. picker URI 是临时授权，先 copy 到 cacheDir 落盘读字节
     const lastSlash = cloudPath.lastIndexOf('/');
     const prefix = lastSlash > 0 ? cloudPath.substring(0, lastSlash) : 'common';
     const origName = lastSlash > 0 ? cloudPath.substring(lastSlash + 1) : cloudPath;
@@ -37,7 +34,6 @@ export class UploadService {
     fileIo.closeSync(dstFile);
 
     try {
-      // 2. 读成 ArrayBuffer → base64
       const stat = fileIo.statSync(cacheFilePath);
       const size = stat.size;
       const buf = new ArrayBuffer(size);
@@ -54,16 +50,12 @@ export class UploadService {
     }
   }
 
-  /**
-   * 旧代码兼容：以前存 objectPath 在数据库里，这里提供一个 path→url 的转换。
-   * 由于后端现在统一返回完整 URL，这里直接返回原值。
-   */
+
   static async getDownloadURL(cloudPathOrUrl: string): Promise<string> {
     if (!cloudPathOrUrl) return '';
     if (cloudPathOrUrl.startsWith('http://') || cloudPathOrUrl.startsWith('https://')) {
       return cloudPathOrUrl;
     }
-    // 走后端兜底接口解析
     try {
       const url = await ApiClient.get<string>('/upload/url', { path: cloudPathOrUrl } as UploadUrlQuery);
       return url || '';

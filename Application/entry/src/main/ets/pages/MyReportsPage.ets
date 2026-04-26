@@ -1,6 +1,7 @@
 import { router, window } from '@kit.ArkUI';
 import { ReportService } from '../services/ReportService';
 import { Dispute } from '../model/Dispute';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
 @Entry
 @Component
@@ -28,7 +29,8 @@ export struct MyReportsPage {
   }
 
   build() {
-    Column() {
+    Stack() {
+      Column() {
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -37,9 +39,18 @@ export struct MyReportsPage {
         .width(40).height(40).borderRadius(20)
         .backgroundColor($r('app.color.bg_secondary'))
         .justifyContent(FlexAlign.Center)
-        .onClick(() => { router.back() })
+        .onClick(() => {
+          if (AppStorage.get<boolean>('isTabletMode') === true) {
+            AppStorage.setOrCreate('tabletRightType', 'none');
+            AppStorage.setOrCreate('tabletRightParams', '');
+            AppStorage.setOrCreate('tabletPrevRightType', 'none');
+            AppStorage.setOrCreate('tabletPrevRightParams', '');
+          } else {
+            router.back();
+          }
+        })
 
-        Text('我的举报')
+        Text('我的异议')
           .fontSize(17).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
           .layoutWeight(1).textAlign(TextAlign.Center)
@@ -62,7 +73,7 @@ export struct MyReportsPage {
           Text('暂无举报记录')
             .fontSize(16).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_primary'))
-          Text('你提交的举报或异议会显示在这里')
+          Text('你提交的异议会显示在这里')
             .fontSize(13).fontColor($r('app.color.text_hint'))
         }
         .layoutWeight(1).width('100%')
@@ -106,5 +117,10 @@ export struct MyReportsPage {
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.bg_page'))
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

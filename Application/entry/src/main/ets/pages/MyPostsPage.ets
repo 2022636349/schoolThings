@@ -4,6 +4,7 @@ import { common } from '@kit.AbilityKit';
 import { AuthService, SessionInfo } from '../services/AuthService';
 import { ItemCardView } from './Card';
 import { ItemCard, ItemService } from '../services/ItemService';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
 @Entry
 @Component
@@ -57,8 +58,9 @@ export struct MyPostsPage {
   }
 
   build() {
-    Column() {
-      // 顶部导航
+    Stack() {
+      Column() {
+
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -114,7 +116,7 @@ export struct MyPostsPage {
           } else {
             ForEach(this.items, (item: ItemCard) => {
               ListItem() {
-                ItemCardView({ item: item })
+                ItemCardView({ item: item, compact: true })
               }
             }, (item: ItemCard): string => item.itemId.toString())
           }
@@ -129,6 +131,11 @@ export struct MyPostsPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

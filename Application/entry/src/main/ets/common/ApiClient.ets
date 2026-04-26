@@ -5,15 +5,6 @@ import { AppConfig } from './AppConfig';
 import { Session } from './Session';
 import { NetworkMonitor } from './NetworkMonitor';
 
-/**
- * 统一 HTTP 客户端
- * - 所有请求统一走 baseURL + /api 前缀
- * - 自动带上 Authorization: Bearer <accessToken>
- * - 统一解析 Result<T> 响应，失败则抛 ApiError
- *
- * 只保留最常用方法：get / post / put / del / upload (multipart)
- */
-
 export interface ApiResult<T> {
   code: number;
   message: string;
@@ -56,10 +47,6 @@ function buildQuery(params?: QueryMap): string {
   return parts.length > 0 ? '?' + parts.join('&') : '';
 }
 
-/**
- * 有些调用点（如 Service 静态方法）可能拿不到 context，这里允许外部
- * 通过 ApiClient.setContext() 注入一个 fallback，避免把 context 往到处传。
- */
 let globalContext: common.UIAbilityContext | null = null;
 let hasShownSessionExpiredToast: boolean = false;
 
@@ -75,10 +62,6 @@ export class ApiClient {
   private static resolveContext(ctx?: common.UIAbilityContext): common.UIAbilityContext | null {
     return ctx ?? globalContext;
   }
-
-  // ────────────────────────────────────────────────
-  // 基础请求
-  // ────────────────────────────────────────────────
 
   static async get<T>(path: string, params?: QueryMap, ctx?: common.UIAbilityContext): Promise<T> {
     return ApiClient.request<T>('GET', path + buildQuery(params), undefined, ctx);
@@ -97,7 +80,7 @@ export class ApiClient {
   }
 
   private static handleSessionExpired(ctx?: common.UIAbilityContext): void {
-    // 离线状态下，401/403 很可能是网络抖动，不要把用户踢回登录页
+
     if (!NetworkMonitor.isOnline()) {
       return;
     }
@@ -146,17 +129,15 @@ export class ApiClient {
         options.extraData = JSON.stringify(body);
       }
 
-      // 单独捕获传输层异常（DNS 失败、无网络、超时、连接被重置等）
       let resp: http.HttpResponse;
       try {
         resp = await httpRequest.request(url, options);
       } catch (e) {
-        // 传输层异常 → 通知 NetworkMonitor 进入离线态并弹提示
+
         NetworkMonitor.reportRequestFailure();
         throw new ApiError(-1, '网络连接失败，请检查网络');
       }
 
-      // 能收到响应说明链路通畅
       NetworkMonitor.reportRequestSuccess();
 
       const status = resp.responseCode;
@@ -241,14 +222,6 @@ export class ApiClient {
       return '';
     }
   }
-
-  // ────────────────────────────────────────────────
-  // 二进制 / multipart 上传
-  // HarmonyOS 暂不便内建 multipart 编码，这里使用 base64 JSON 上传，
-  // 后端 /upload/file 额外接受 { name, base64, contentType } 的 POST。
-  // 若后端已实现标准 multipart，可换成 request.agent，但那需要 picker URI
-  // 直接落盘；当前实现更简单且跨设备稳定。
-  // ────────────────────────────────────────────────
 
   static async uploadBase64(
     prefix: string,

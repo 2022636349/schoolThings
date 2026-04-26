@@ -1,5 +1,7 @@
 import { router, window } from '@kit.ArkUI';
 import { AnnouncementService, AnnouncementItem } from '../services/AnnouncementService';
+import { UploadService } from '../services/UploadService';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
 interface AnnouncementDetailParams {
   id: number;
@@ -8,6 +10,7 @@ interface AnnouncementDetailParams {
 @Entry
 @Component
 export struct AnnouncementDetailPage {
+  @Prop paramsJson: string = '';
   @State topHeight: number = 0;
   @State title: string = '';
   @State cover: string = '';
@@ -21,12 +24,32 @@ export struct AnnouncementDetailPage {
     window.getLastWindow(getContext(this)).then((win) => {
       this.topHeight = px2vp(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height);
     });
-    const params = router.getParams() as AnnouncementDetailParams;
+    let params: AnnouncementDetailParams | null = null;
+    if (this.paramsJson && this.paramsJson.length > 0) {
+      try {
+        params = JSON.parse(this.paramsJson) as AnnouncementDetailParams;
+      } catch (e) {
+        params = null;
+      }
+    } else {
+      params = router.getParams() as AnnouncementDetailParams;
+    }
     if (params && params.id) {
       this.announcementId = params.id;
       this.loadDetail(params.id);
     } else {
       this.isLoading = false;
+    }
+  }
+
+  private goBack(): void {
+    if (AppStorage.get<boolean>('isTabletMode') === true) {
+      AppStorage.setOrCreate('tabletRightType', 'none');
+      AppStorage.setOrCreate('tabletRightParams', '');
+      AppStorage.setOrCreate('tabletPrevRightType', 'none');
+      AppStorage.setOrCreate('tabletPrevRightParams', '');
+    } else {
+      router.back();
     }
   }
 
@@ -36,7 +59,7 @@ export struct AnnouncementDetailPage {
       const item = await AnnouncementService.detail(id);
       if (item) {
         this.title = item.title || '';
-        this.cover = item.cover || '';
+        this.cover = item.cover ? await UploadService.getDownloadURL(item.cover) : '';
         this.content = item.content || '';
         this.createTime = item.createdAt || 0;
       }
@@ -71,7 +94,8 @@ export struct AnnouncementDetailPage {
   }
 
   build() {
-    Column() {
+    Stack() {
+      Column() {
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -80,7 +104,7 @@ export struct AnnouncementDetailPage {
         .width(40).height(40).borderRadius(20)
         .backgroundColor($r('app.color.bg_secondary'))
         .justifyContent(FlexAlign.Center)
-        .onClick(() => { router.back() })
+        .onClick(() => { this.goBack() })
 
         Text('公告详情')
           .fontSize(17).fontWeight(FontWeight.Medium)
@@ -136,5 +160,10 @@ export struct AnnouncementDetailPage {
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.bg_page'))
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

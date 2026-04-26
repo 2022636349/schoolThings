@@ -1,15 +1,10 @@
-/**
- * 短信验证码按钮 + 60s 倒计时
- * 使用：SmsCountdownButton({ canSend: this.phoneValid, onSend: () => Promise<boolean> })
- *   - onSend 返回 true 才启动倒计时；返回 false / 抛错则不倒计时
- */
 @Component
 export struct SmsCountdownButton {
-  /** 外部是否允许发送（如手机号已填写合法） */
+
   @Prop canSend: boolean = false;
-  /** 倒计时总秒数 */
+
   countdownSeconds: number = 60;
-  /** 点击发送，返回 Promise<boolean>：true 才进入倒计时 */
+
   onSend: () => Promise<boolean> = async () => false;
 
   @State remaining: number = 0;

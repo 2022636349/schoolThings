@@ -1,7 +1,3 @@
-/**
- * 大厅页面（Phase 3）
- * 功能：失物招领 / 寻物启事 导航 + 卡片显示（分类/状态/点赞） + 筛选工具栏
- */
 import { router } from '@kit.ArkUI';
 import { preferences } from '@kit.ArkData';
 import { ItemService, ItemCard } from '../services/ItemService';
@@ -18,17 +14,18 @@ interface HallLikeSyncPayload {
 @Entry
 @Component
 export struct HallPage {
-  // 用 @Prop 接收 HomePage 已经算好的安全区高度，和 FrontPage 保持一致
+
   @Prop topHeight: number = 0;
   @Prop bottomHeight: number = 0;
   @Prop refreshTrigger: number = 0;
-  @State currentTypeIndex: number = 0;  // 0=失物招领, 1=寻物启事
+  @Prop @Watch('onAnimationTriggerChange') animationTrigger: number = 0;
+  @StorageProp('currentIndex') @Watch('onCurrentIndexChange') activeTabIndex: number = 0;
+  @State currentTypeIndex: number = 0;
   @State lostItems: HallItemData[] = [];
   @State foundItems: HallItemData[] = [];
   @State isLoading: boolean = false;
   @State isRefreshing: boolean = false;
 
-  // 筛选/排序状态
   @State searchKeyword: string = '';
   @State searchHistory: string[] = [];
   @State activeKeyword: string = '';
@@ -39,6 +36,7 @@ export struct HallPage {
   @State filterLocationKeyword: string = '';
   @State timeRange: string = 'all';
   @State showCategoryFilter: boolean = false;
+  @State listAnimationTrigger: number = 0;
 
   aboutToAppear(): void {
     ItemService.resetAllPagination();
@@ -53,6 +51,18 @@ export struct HallPage {
       this.lostItems = [];
       this.foundItems = [];
       this.loadItems();
+    }
+  }
+
+  onAnimationTriggerChange(): void {
+    if (this.animationTrigger > 0) {
+      this.listAnimationTrigger++;
+    }
+  }
+
+  onCurrentIndexChange(): void {
+    if (this.activeTabIndex === 1) {
+      this.listAnimationTrigger++;
     }
   }
 
@@ -82,7 +92,7 @@ export struct HallPage {
   }
 
   private getCurrentType(): string {
-    return this.currentTypeIndex === 0 ? 'lost' : 'found';
+    return this.currentTypeIndex === 0 ? 'found' : 'lost';
   }
 
   private getCurrentItems(): HallItemData[] {
@@ -144,6 +154,7 @@ export struct HallPage {
     const list = await ItemService.searchByKeyword(keyword);
     const hallItems = this.enrichItems(list).filter((item: HallItemData) => item.type === this.getCurrentType());
     this.searchResults = hallItems;
+    this.listAnimationTrigger++;
   }
 
   private clearSearch(): void {
@@ -187,6 +198,7 @@ export struct HallPage {
       } else {
         this.foundItems = this.enrichItems(result);
       }
+      this.listAnimationTrigger++;
     } finally {
       this.isLoading = false;
     }
@@ -214,6 +226,13 @@ export struct HallPage {
   }
 
   private handleCardClick(item: HallItemData): void {
+    if (AppStorage.get<boolean>('isTabletMode') === true) {
+      AppStorage.setOrCreate('tabletPrevRightType', 'none');
+      AppStorage.setOrCreate('tabletPrevRightParams', '');
+      AppStorage.setOrCreate('tabletRightParams', JSON.stringify(item));
+      AppStorage.setOrCreate('tabletRightType', 'detail');
+      return;
+    }
     const options: router.RouterOptions = {
       url: 'pages/DetailPage',
       params: item
@@ -222,7 +241,7 @@ export struct HallPage {
   }
 
   private async onRefresh(): Promise<void> {
-    // 重置当前 tab 的分页游标，重新从头拉
+
     ItemService.resetPaginationByType(this.getCurrentType());
     try {
       await this.loadItems();
@@ -328,9 +347,12 @@ export struct HallPage {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Center)
       .onClick(() => {
-        this.currentTypeIndex = 0;
+        if (this.currentTypeIndex !== 0) {
+          this.currentTypeIndex = 0;
+          this.listAnimationTrigger++;
+        }
         if (this.lostItems.length === 0 && !this.isLoading) {
-          ItemService.resetPaginationByType('lost');
+          ItemService.resetPaginationByType('found');
           this.loadItems();
         }
       })
@@ -350,9 +372,12 @@ export struct HallPage {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Center)
       .onClick(() => {
-        this.currentTypeIndex = 1;
+        if (this.currentTypeIndex !== 1) {
+          this.currentTypeIndex = 1;
+          this.listAnimationTrigger++;
+        }
         if (this.foundItems.length === 0 && !this.isLoading) {
-          ItemService.resetPaginationByType('found');
+          ItemService.resetPaginationByType('lost');
           this.loadItems();
         }
       })
@@ -366,30 +391,30 @@ export struct HallPage {
   buildFilterBar() {
     Row({ space: 8 }) {
       Row({ space: 4 }) {
-        Text('⏱').fontSize(12)
-        Text(this.sortBy === 'time-desc' ? '↓' : '↑').fontSize(10)
+        Text('发布时间').fontSize(12).fontColor(Color.Black)
+        Text(this.sortBy === 'time-desc' ? '↓' : '↑').fontSize(10).fontColor(Color.Black)
       }
       .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-      .backgroundColor(this.sortBy.startsWith('time') ? '#E6F0FF' : '#F5F5F5')
+      .backgroundColor(this.sortBy.startsWith('time') ? '#ff5a97f3' : '#F5F5F5')
       .borderRadius(4)
       .onClick(() => {
         this.sortBy = this.sortBy === 'time-desc' ? 'time-asc' : 'time-desc';
       })
 
       Row({ space: 4 }) {
-        Text('❤️').fontSize(12)
-        Text(this.sortBy === 'like-desc' ? '↓' : '↑').fontSize(10)
+        Text('点赞量').fontSize(12).fontColor(Color.Black)
+        Text(this.sortBy === 'like-desc' ? '↓' : '↑').fontSize(10).fontColor(Color.Black)
       }
       .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-      .backgroundColor(this.sortBy.startsWith('like') ? '#FFE6E6' : '#F5F5F5')
+      .backgroundColor(this.sortBy.startsWith('like') ? '#fff89d9d' : '#F5F5F5')
       .borderRadius(4)
       .onClick(() => {
         this.sortBy = this.sortBy === 'like-desc' ? 'like-asc' : 'like-desc';
       })
 
       Row({ space: 4 }) {
-        Text(this.filterCategory || '分类').fontSize(12)
-        Text('▼').fontSize(10)
+        Text(this.filterCategory || '分类').fontSize(12).fontColor(Color.Black)
+        Text('▼').fontSize(10).fontColor(Color.Black)
       }
       .padding({ left: 8, right: 8, top: 4, bottom: 4 })
       .backgroundColor(this.filterCategory ? '#FFF3E0' : '#F5F5F5')
@@ -414,10 +439,12 @@ export struct HallPage {
           .borderRadius(4)
           .padding({ left: 8, right: 8 })
           .onChange((value: string) => { this.filterLocationKeyword = value })
+          .placeholderColor(Color.Gray)
+          .fontColor(Color.Black)
 
         Row({ space: 4 }) {
-          Text(this.timeRange === 'all' ? '全部时间' : (this.timeRange === '7d' ? '近7天' : '近30天')).fontSize(12)
-          Text('▼').fontSize(10)
+          Text(this.timeRange === 'all' ? '全部时间' : (this.timeRange === '7d' ? '近7天' : '近30天')).fontSize(12).fontColor(Color.Black)
+          Text('▼').fontSize(10).fontColor(Color.Black)
         }
         .padding({ left: 8, right: 8, top: 4, bottom: 4 })
         .backgroundColor(this.timeRange === 'all' ? '#F5F5F5' : '#E6F0FF')
@@ -432,9 +459,9 @@ export struct HallPage {
           }
         })
         Row() {
-          Text('全部').fontSize(12)
+          Text('全部').fontSize(12).fontColor(Color.Black)
           if (!this.filterCategory) {
-            Text(' ✓').fontSize(12).fontColor('#4E8FDF')
+            Text(' ✓').fontSize(12).fontColor('#4E8FDF').fontColor(Color.Black)
           }
         }
         .padding({ left: 8, right: 8, top: 6, bottom: 6 })
@@ -447,9 +474,9 @@ export struct HallPage {
 
         ForEach(ITEM_CATEGORIES, (cat: string) => {
           Row() {
-            Text(cat).fontSize(12)
+            Text(cat).fontSize(12).fontColor(Color.Black)
             if (this.filterCategory === cat) {
-              Text(' ✓').fontSize(12).fontColor('#4E8FDF')
+              Text(' ✓').fontSize(12).fontColor('#4E8FDF').fontColor(Color.Black)
             }
           }
           .padding({ left: 8, right: 8, top: 6, bottom: 6 })
@@ -466,7 +493,7 @@ export struct HallPage {
     .scrollable(ScrollDirection.Horizontal)
     .scrollBar(BarState.Off)
     .width('100%').height(40)
-    .backgroundColor('#FAFAFA')
+    .backgroundColor($r('app.color.bg_page'))
   }
 
   @Builder
@@ -486,10 +513,12 @@ export struct HallPage {
             }
             .width('100%').height(200).justifyContent(FlexAlign.Center)
           } else {
-            Column({ space: 12 }) {
-              ForEach(this.getCurrentItems(), (item: HallItemData) => {
+            Column({ space: 8 }) {
+              ForEach(this.getCurrentItems(), (item: HallItemData, index: number) => {
                 HallItemCard({
                   item,
+                  itemIndex: index,
+                  animationTrigger: this.listAnimationTrigger,
                   onCardClick: (i: HallItemData) => { this.handleCardClick(i) },
                   onLikeClick: (itemId: number, _isLiked: boolean, likeCount: number) => {
                     this.updateItemLikeState(itemId, likeCount)
@@ -513,23 +542,19 @@ export struct HallPage {
 
   build() {
     Column() {
-      // 顶部安全区占位
+
       Row().width('100%').height(this.topHeight).backgroundColor($r('app.color.bg_card'))
 
       this.buildSearchBar()
 
-      // 顶部导航（失物招领 / 寻物启事）
       this.buildTopNav()
 
-      // 筛选工具栏
       this.buildFilterBar()
 
-      // 分类下拉（条件）
       if (this.showCategoryFilter) {
         this.buildCategoryFilter()
       }
 
-      // 卡片列表
       this.buildList()
     }
     .width('100%')

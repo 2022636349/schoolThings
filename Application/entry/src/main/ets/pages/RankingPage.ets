@@ -1,9 +1,7 @@
 import { router, window } from '@kit.ArkUI';
 import { RankingService, RankingUser } from '../services/RankingService';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
-/**
- * 表彰排行页
- */
 @Entry
 @Component
 export struct RankingPage {
@@ -31,14 +29,20 @@ export struct RankingPage {
 
   goBack(): void {
     if (AppStorage.get<boolean>('isTabletMode') === true) {
-      AppStorage.setOrCreate('tabletRightType', 'none');
-    } else {
-      router.back();
+      const prev = AppStorage.get<string>('tabletPrevRightType') || 'none';
+      const prevParams = AppStorage.get<string>('tabletPrevRightParams') || '';
+      AppStorage.setOrCreate('tabletRightParams', prevParams);
+      AppStorage.setOrCreate('tabletRightType', prev);
+      AppStorage.setOrCreate('tabletPrevRightType', 'none');
+      AppStorage.setOrCreate('tabletPrevRightParams', '');
+      return;
     }
+    router.back();
   }
 
   build() {
-    Column() {
+    Stack() {
+      Column() {
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -126,6 +130,11 @@ export struct RankingPage {
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

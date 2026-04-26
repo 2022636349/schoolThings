@@ -1,5 +1,5 @@
 import { router } from '@kit.ArkUI';
-import { promptAction, window } from '@kit.ArkUI';
+import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { AuthService } from '../services/AuthService';
@@ -8,6 +8,7 @@ import { UserService } from '../services/UserService';
 import { UploadService } from '../services/UploadService';
 import { ChatMessage } from '../model/ChatMessage';
 import { ChatSession } from '../model/ChatSession';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 import { formatTime } from '../services/ItemService';
 
 interface ChatParams {
@@ -48,7 +49,6 @@ export struct ChatPage {
   @State otherUserAvatar: string = '';
   @State isInitiator: boolean = false;
 
-  // 从数据库加载的物品完整信息
   @State fullItemText: string = '';
   @State fullItemType: string = '';
   @State fullMediaListJson: string = '[]';
@@ -159,7 +159,7 @@ export struct ChatPage {
       this.pollTimer = -1;
     }
     this.markCurrentSessionRead();
-    // 通知 MessagePage 刷新会话列表（新消息 & 未读数）
+
     AppStorage.setOrCreate('messageListRefresh', Date.now());
   }
 
@@ -264,7 +264,7 @@ export struct ChatPage {
       await this.loadData();
     } catch (error) {
       console.error('[ChatPage] 发送失败:', error);
-      promptAction.showToast({ message: '发送失败，请重试' });
+      this.getUIContext().getPromptAction().showToast({ message: '发送失败，请重试' });
     } finally {
       this.isSending = false;
     }
@@ -285,20 +285,19 @@ export struct ChatPage {
         this.isClaimed = true;
         this.fullItemType = 'claimed';
         this.itemType = 'claimed';
-        promptAction.showToast({ message: '认领完成！双方已确认' });
+        this.getUIContext().getPromptAction().showToast({ message: '认领完成！双方已确认' });
       } else {
         await ChatService.sendSystemMessage(this.sessionId, '一方已确认认领，等待对方确认');
-        promptAction.showToast({ message: '已确认，等待对方确认' });
+        this.getUIContext().getPromptAction().showToast({ message: '已确认，等待对方确认' });
       }
     } catch (error) {
       console.error('[ChatPage] 确认认领失败:', error);
-      promptAction.showToast({ message: '操作失败，请重试' });
+      this.getUIContext().getPromptAction().showToast({ message: '操作失败，请重试' });
     } finally {
       this.isConfirming = false;
     }
   }
 
-  // 返回有效类型（优先 DB 加载值）
   effectiveType(): string {
     return this.fullItemType || this.itemType;
   }
@@ -306,7 +305,7 @@ export struct ChatPage {
   getTypeLabel(): string {
     const t = this.effectiveType();
     if (t === 'lost') return '寻物';
-    if (t === 'find') return '招领';
+    if (t === 'found') return '招领';
     if (t === 'claimed') return '已认领';
     return '物品';
   }
@@ -314,14 +313,14 @@ export struct ChatPage {
   getTypeColor(): string {
     const t = this.effectiveType();
     if (t === 'lost') return '#E07B39';
-    if (t === 'find') return '#4E8FDF';
+    if (t === 'found') return '#4E8FDF';
     return '#4CAF50';
   }
 
   getTypeBgColor(): ResourceColor {
     const t = this.effectiveType();
     if (t === 'lost') return $r('app.color.badge_lost_bg');
-    if (t === 'find') return $r('app.color.badge_find_bg');
+    if (t === 'found') return $r('app.color.badge_find_bg');
     return $r('app.color.badge_claimed_bg');
   }
 
@@ -334,8 +333,9 @@ export struct ChatPage {
   }
 
   build() {
-    Column() {
-      // 顶部导航
+    Stack() {
+      Column() {
+
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -346,7 +346,6 @@ export struct ChatPage {
         .justifyContent(FlexAlign.Center)
         .onClick(() => { this.goBack() })
 
-        // 对方信息
         Row({ space: 8 }) {
           if (this.otherUserAvatar) {
             Image(this.otherUserAvatar)
@@ -365,7 +364,6 @@ export struct ChatPage {
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
 
-        // 认领按钮
         if (this.isClaimed) {
           Text('已认领')
             .fontSize(13).fontColor('#4CAF50')
@@ -392,7 +390,6 @@ export struct ChatPage {
       .backgroundColor($r('app.color.bg_card'))
       .shadow({ radius: 4, color: 'rgba(0,0,0,0.04)', offsetY: 2 })
 
-      // 物品信息条（使用 DB 加载的完整数据）
       Row({ space: 10 }) {
         Text(this.getTypeLabel())
           .fontSize(11)
@@ -442,7 +439,6 @@ export struct ChatPage {
         }
       })
 
-      // 消息列表
       List({ space: 8, scroller: this.scroller }) {
         ForEach(this.messages, (msg: ChatMessage) => {
           ListItem() {
@@ -455,7 +451,6 @@ export struct ChatPage {
       .padding({ left: 12, right: 12, top: 8, bottom: 8 })
       .backgroundColor($r('app.color.bg_page'))
 
-      // 输入栏
       Row({ space: 10 }) {
         TextInput({ text: this.inputText, placeholder: '输入消息...' })
           .layoutWeight(1)
@@ -487,6 +482,11 @@ export struct ChatPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
@@ -537,7 +537,7 @@ export struct ChatPage {
               .fontColor('#4E8FDF')
             Text(this.parseItemCardText(msg.content))
               .fontSize(14)
-              .fontColor($r('app.color.text_primary'))
+              .fontColor($r('app.color.text_tertiary'))
               .maxLines(3)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
           }

@@ -1,10 +1,9 @@
 import { router, window } from '@kit.ArkUI';
 import { WarningService } from '../services/WarningService';
 import { ItemCard } from '../services/ItemService';
+import { ItemCardView } from './Card';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
-/**
- * 失物处理预警公示页
- */
 @Entry
 @Component
 export struct WarningPage {
@@ -32,14 +31,20 @@ export struct WarningPage {
 
   goBack(): void {
     if (AppStorage.get<boolean>('isTabletMode') === true) {
-      AppStorage.setOrCreate('tabletRightType', 'none');
-    } else {
-      router.back();
+      const prev = AppStorage.get<string>('tabletPrevRightType') || 'none';
+      const prevParams = AppStorage.get<string>('tabletPrevRightParams') || '';
+      AppStorage.setOrCreate('tabletRightParams', prevParams);
+      AppStorage.setOrCreate('tabletRightType', prev);
+      AppStorage.setOrCreate('tabletPrevRightType', 'none');
+      AppStorage.setOrCreate('tabletPrevRightParams', '');
+      return;
     }
+    router.back();
   }
 
   build() {
-    Column() {
+    Stack() {
+      Column() {
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -94,43 +99,7 @@ export struct WarningPage {
         List({ space: 10 }) {
           ForEach(this.items, (item: ItemCard) => {
             ListItem() {
-              Column({ space: 8 }) {
-                Text(item.text || '预警物品')
-                  .fontSize(15).fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.text_primary'))
-                  .width('100%')
-                  .maxLines(2)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Row({ space: 10 }) {
-                  Text(item.category || '其他')
-                    .fontSize(12).fontColor('#A46615')
-                  Text(item.publishTime)
-                    .fontSize(12).fontColor($r('app.color.text_hint'))
-                }
-                .width('100%')
-              }
-              .width('100%')
-              .padding(14)
-              .backgroundColor($r('app.color.bg_card'))
-              .borderRadius(12)
-              .onClick(() => {
-                const p: Record<string, Object> = {};
-                p['itemId'] = item.itemId;
-                p['type'] = item.type;
-                p['text'] = item.text;
-                p['publishTime'] = item.publishTime;
-                p['publishId'] = item.publishId;
-                p['publisherName'] = item.publisherName;
-                p['publisherAvatar'] = item.publisherAvatar;
-                p['mediaList'] = JSON.stringify(item.mediaList);
-                p['category'] = item.category;
-                p['likeCount'] = item.likeCount;
-                p['status'] = item.status;
-                p['claimedBy'] = item.claimedBy || '';
-                p['claimedByStudentNo'] = item.claimedByStudentNo || '';
-                p['lostTime'] = item.lostTime;
-                router.pushUrl({ url: 'pages/DetailPage', params: p });
-              })
+              ItemCardView({ item, compact: true })
             }
           })
         }
@@ -141,6 +110,11 @@ export struct WarningPage {
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

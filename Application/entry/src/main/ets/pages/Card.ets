@@ -5,6 +5,7 @@ import { deriveStatus, getStatusLabel, getStatusColor, getStatusBg } from '../mo
 @Component
 export struct ItemCardView {
   @Prop item: ItemCard;
+  @Prop compact: boolean = false;
 
   onMediaClick(index: number): void {
     router.pushUrl({
@@ -102,7 +103,6 @@ export struct ItemCardView {
             .objectFit(ImageFit.Cover)
             .backgroundColor($r('app.color.bg_image_placeholder'))
 
-          // 超过3张显示 +N
           if (this.item.mediaList.length > 3) {
             Text(`+${this.item.mediaList.length - 3}`)
               .width('100%')
@@ -141,10 +141,106 @@ export struct ItemCardView {
     return deriveStatus(this.item.type, this.item.status);
   }
 
-  build() {
+  private goDetail(): void {
+    const p: Record<string, Object> = {};
+    p['itemId'] = this.item.itemId;
+    p['type'] = this.item.type;
+    p['text'] = this.item.text;
+    p['publishTime'] = this.item.publishTime;
+    p['publishId'] = this.item.publishId;
+    p['publisherName'] = this.item.publisherName;
+    p['publisherAvatar'] = this.item.publisherAvatar;
+    p['mediaList'] = JSON.stringify(this.item.mediaList);
+    p['category'] = this.item.category;
+    p['likeCount'] = this.item.likeCount;
+    p['status'] = this.item.status;
+    p['claimedBy'] = this.item.claimedBy || '';
+    p['claimedByStudentNo'] = this.item.claimedByStudentNo || '';
+    p['lostTime'] = this.item.lostTime;
+    if (AppStorage.get<boolean>('isTabletMode') === true) {
+      const cur = AppStorage.get<string>('tabletRightType') || 'none';
+      AppStorage.setOrCreate('tabletPrevRightType', cur);
+      AppStorage.setOrCreate('tabletRightType', 'detail');
+      AppStorage.setOrCreate('tabletRightParams', JSON.stringify(p));
+    } else {
+      router.pushUrl({ url: 'pages/DetailPage', params: p });
+    }
+  }
+
+  @Builder
+  buildCompactCard() {
+    Row({ space: 12 }) {
+      if (this.item.mediaList.length > 0 && this.item.mediaList[0].url) {
+        Image(this.item.mediaList[0].url)
+          .width(100).height(100).borderRadius(8)
+          .objectFit(ImageFit.Cover)
+      } else {
+        Column() {
+          Text('📷').fontSize(28)
+        }
+        .width(100).height(100).borderRadius(8)
+        .backgroundColor('#F5F5F5')
+        .justifyContent(FlexAlign.Center)
+      }
+
+      Column({ space: 8 }) {
+        Row({ space: 8 }) {
+          Text(this.item.text.split('\n')[0] || '物品')
+            .fontSize(15).fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+
+          if (this.item.category) {
+            Text(this.item.category)
+              .fontSize(10).fontColor('#666')
+              .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+              .backgroundColor('#F0F0F0')
+              .borderRadius(3)
+          }
+        }
+
+        Text(this.item.text)
+          .fontSize(13).fontColor($r('app.color.text_hint'))
+          .lineHeight(18)
+          .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%')
+
+        Row({ space: 8 }) {
+          Text(this.item.publisherName || '匿名')
+            .fontSize(11).fontColor($r('app.color.text_hint'))
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+
+          Text(getStatusLabel(this.item.type, this.getDisplayStatus()))
+            .fontSize(10).fontColor(getStatusColor(this.getDisplayStatus()))
+            .backgroundColor(getStatusBg(this.getDisplayStatus()))
+            .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+            .borderRadius(2)
+
+          Blank()
+
+          Row({ space: 2 }) {
+            Text($r('app.media.like_s')).fontSize(12)
+            Text((this.item.likeCount || 0).toString())
+              .fontSize(10)
+              .fontColor($r('app.color.text_hint'))
+          }
+        }
+        .width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+      .height(100)
+      .justifyContent(FlexAlign.SpaceBetween)
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Top)
+  }
+
+  @Builder
+  buildRichCard() {
     Column() {
       Row() {
-        // 发布者头像
         if (this.item.publisherAvatar) {
           Image(this.item.publisherAvatar)
             .width(40)
@@ -214,33 +310,21 @@ export struct ItemCardView {
       }
     }
     .width('100%')
-    .padding(14)
+  }
+
+  build() {
+    Column() {
+      if (this.compact) {
+        this.buildCompactCard()
+      } else {
+        this.buildRichCard()
+      }
+    }
+    .width('100%')
+    .padding(12)
     .backgroundColor($r('app.color.bg_card'))
     .borderRadius(12)
-    .onClick(() => {
-      const p: Record<string, Object> = {};
-      p['itemId'] = this.item.itemId;
-      p['type'] = this.item.type;
-      p['text'] = this.item.text;
-      p['publishTime'] = this.item.publishTime;
-      p['publishId'] = this.item.publishId;
-      p['publisherName'] = this.item.publisherName;
-      p['publisherAvatar'] = this.item.publisherAvatar;
-      p['mediaList'] = JSON.stringify(this.item.mediaList);
-      p['category'] = this.item.category;
-      p['likeCount'] = this.item.likeCount;
-      p['status'] = this.item.status;
-      p['claimedBy'] = this.item.claimedBy || '';
-      p['claimedByStudentNo'] = this.item.claimedByStudentNo || '';
-      p['lostTime'] = this.item.lostTime;
-      if (AppStorage.get<boolean>('isTabletMode') === true) {
-        const cur = AppStorage.get<string>('tabletRightType') || 'none';
-        AppStorage.setOrCreate('tabletPrevRightType', cur);
-        AppStorage.setOrCreate('tabletRightType', 'detail');
-        AppStorage.setOrCreate('tabletRightParams', JSON.stringify(p));
-      } else {
-        router.pushUrl({ url: 'pages/DetailPage', params: p });
-      }
-    })
+    .margin({ bottom: 12 })
+    .onClick(() => { this.goDetail() })
   }
 }

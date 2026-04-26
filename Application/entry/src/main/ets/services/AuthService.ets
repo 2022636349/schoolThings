@@ -2,13 +2,9 @@ import { common } from '@kit.AbilityKit';
 import { ApiClient, ApiError } from '../common/ApiClient';
 import { Session } from '../common/Session';
 
-/**
- * 登录/注册/账号相关封装（Phase 4：统一走后端 REST）
- */
-
 export interface SessionInfo {
-  id: string;          // userId 的字符串形式（后端 Long → 字符串）
-  studentNo: string;   // 学号
+  id: string;          
+  studentNo: string;   
   name: string;
   avatar: string;
   published: number;
@@ -79,12 +75,7 @@ function appendAvatarVersion(avatar: string, version: string): string {
 }
 
 export class AuthService {
-  /** 兼容旧代码：匿名登录已不再需要，保留空实现 */
-  static async initAnonymousLogin(): Promise<void> {
-    return;
-  }
 
-  /** 登录（学号 + 密码），成功后把 token + 基本信息落盘 */
   static async login(studentNo: string, password: string): Promise<boolean> {
     const ctx = ApiClient.getContext();
     const body: StudentLoginBody = { studentNo: studentNo, password: password };
@@ -109,7 +100,6 @@ export class AuthService {
     }
   }
 
-  /** 注册（学号 + 密码 + 昵称 + 手机号），成功后自动登录 */
   static async register(studentNo: string, password: string, name: string, phone: string): Promise<boolean> {
     const ctx = ApiClient.getContext();
     const body: StudentRegisterBody = {
@@ -135,7 +125,6 @@ export class AuthService {
     return true;
   }
 
-  /** 学号是否已被注册（注册页实时校验用） */
   static async isStudentIdTaken(studentNo: string): Promise<boolean> {
     try {
       const taken = await ApiClient.get<boolean>('/auth/student/taken', { studentNo: studentNo } as StudentTakenQuery);
@@ -146,9 +135,8 @@ export class AuthService {
     }
   }
 
-  /** 兼容旧代码：登录成功后由 login() 内部已保存，这里仅兜底做一次同名写入 */
   static saveSession(context: common.UIAbilityContext, id: string, _password: string): void {
-    // 老调用方式 (id, password) 存不了完整信息，这里只补学号字段
+
     const data = Session.read(context);
     Session.save(context, {
       userId: data.userId || id,
@@ -160,17 +148,14 @@ export class AuthService {
     });
   }
 
-  /** 退出登录 */
   static clearSession(context: common.UIAbilityContext): void {
     Session.clear(context);
   }
 
-  /** 是否已登录（本地 token 存在即可） */
   static isLoggedIn(context: common.UIAbilityContext): boolean {
     return Session.isLoggedIn(context);
   }
 
-  /** 修改密码：校验旧密码后改为新密码 */
   static async changePassword(
     context: common.UIAbilityContext,
     oldPwd: string,
@@ -194,7 +179,6 @@ export class AuthService {
     return Session.getAvatarVersion(context);
   }
 
-  /** 保存/更新推送 token 到后端 */
   static async savePushToken(context: common.UIAbilityContext, token: string): Promise<void> {
     try {
       if (!Session.isLoggedIn(context)) return;
@@ -205,13 +189,12 @@ export class AuthService {
     }
   }
 
-  /** 从后端获取当前登录用户信息（每次都刷） */
   static async getSession(context: common.UIAbilityContext): Promise<SessionInfo | null> {
     try {
       if (!Session.isLoggedIn(context)) return null;
       const resp = await ApiClient.get<MeResp>('/user/me', undefined, context);
       if (!resp) return null;
-      // 同步更新本地缓存的 name / avatar，方便离线时显示
+
       Session.updateProfile(context, resp.name, resp.avatar || '');
       const avatarVersion = Session.getAvatarVersion(context);
       const info: SessionInfo = {

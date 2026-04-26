@@ -1,9 +1,9 @@
 {
   "forms": [
     {
-      "name": "LostFoundWidget",
+      "name": "LostFoundMessageWidget",
       "description": "$string:widget_desc",
-      "src": "./ets/widget/pages/WidgetCard.ets",
+      "src": "./ets/widget/pages/MessageWidgetCard.ets",
       "uiSyntax": "arkts",
       "window": {
         "designWidth": 720,
@@ -17,6 +17,63 @@
       "defaultDimension": "2*4",
       "supportDimensions": [
         "2*4"
+      ]
+    },
+    {
+      "name": "LostFoundPublishWidget",
+      "description": "$string:widget_desc",
+      "src": "./ets/widget/pages/PublishWidgetCard.ets",
+      "uiSyntax": "arkts",
+      "window": {
+        "designWidth": 720,
+        "autoDesignWidth": true
+      },
+      "colorMode": "auto",
+      "isDefault": false,
+      "updateEnabled": true,
+      "scheduledUpdateTime": "08:00",
+      "updateDuration": 1,
+      "defaultDimension": "2*2",
+      "supportDimensions": [
+        "2*2"
+      ]
+    },
+    {
+      "name": "LostFoundAnnouncementWidget",
+      "description": "$string:widget_desc",
+      "src": "./ets/widget/pages/AnnouncementWidgetCard.ets",
+      "uiSyntax": "arkts",
+      "window": {
+        "designWidth": 720,
+        "autoDesignWidth": true
+      },
+      "colorMode": "auto",
+      "isDefault": false,
+      "updateEnabled": true,
+      "scheduledUpdateTime": "08:00",
+      "updateDuration": 1,
+      "defaultDimension": "2*4",
+      "supportDimensions": [
+        "2*4"
+      ]
+    },
+    {
+      "name": "LostFoundHotWidget",
+      "description": "$string:widget_desc",
+      "src": "./ets/widget/pages/HotItemWidgetCard.ets",
+      "uiSyntax": "arkts",
+      "window": {
+        "designWidth": 720,
+        "autoDesignWidth": true
+      },
+      "colorMode": "auto",
+      "isDefault": false,
+      "updateEnabled": true,
+      "scheduledUpdateTime": "08:00",
+      "updateDuration": 1,
+      "defaultDimension": "2*2",
+      "supportDimensions": [
+        "2*2"
       ]
     }
   ]
