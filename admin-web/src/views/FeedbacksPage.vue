@@ -1,47 +1,63 @@
 <template>
-  <el-card>
+  <el-card class="table-card" shadow="never">
     <template #header>
       <div class="card-header">
-        <span>反馈管理</span>
-        <el-button type="primary" @click="loadRows">刷新</el-button>
+        <div class="header-title">
+          <span class="title-dot"></span>
+          <span>意见反馈中心</span>
+        </div>
+        <el-button type="primary" @click="loadRows">
+          <el-icon class="mr-4">
+            <Refresh />
+          </el-icon>刷新
+        </el-button>
       </div>
     </template>
-    <el-table :data="rows" border v-loading="loading">
-      <el-table-column prop="id" label="ID" width="80" />
-      <el-table-column prop="userName" label="用户" width="140" />
+
+    <el-table :data="rows" v-loading="loading" class="modern-table"
+      :header-cell-style="{ background: '#f8f9fa', color: '#606266', fontWeight: 600 }">
+      <el-table-column prop="id" label="ID" width="80" align="center" />
+      <el-table-column prop="userName" label="用户" width="140" align="center" />
       <el-table-column prop="content" label="反馈内容" min-width="260" show-overflow-tooltip />
-      <el-table-column label="处理结果" min-width="180" show-overflow-tooltip>
-        <template #default="scope">{{ scope.row.result || '未处理' }}</template>
+      <el-table-column label="处理结果" min-width="180" show-overflow-tooltip align="center">
+        <template #default="scope">
+          <span class="highlight-text">{{ scope.row.result || '未处理' }}</span>
+        </template>
       </el-table-column>
-      <el-table-column label="提交时间" min-width="170">
+      <el-table-column label="提交时间" min-width="170" align="center">
         <template #default="scope">{{ formatTime(scope.row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="160" fixed="right" align="center">
         <template #default="scope">
-          <el-button size="small" @click="openEdit(scope.row)">处理</el-button>
+          <el-button link type="primary" size="small" @click="openEdit(scope.row)">处理</el-button>
         </template>
       </el-table-column>
     </el-table>
-  </el-card>
 
-  <el-dialog v-model="visible" title="反馈处理" width="520px">
-    <el-form label-width="80px">
-      <el-form-item label="内容">
-        <el-input :model-value="currentRow?.content" type="textarea" :rows="4" disabled />
-      </el-form-item>
-      <el-form-item label="结果">
-        <el-input v-model="result" type="textarea" :rows="4" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" @click="save">保存</el-button>
-    </template>
-  </el-dialog>
+    <!-- 处理弹窗 -->
+    <el-dialog v-model="visible" width="520px" :close-on-click-modal="false" center>
+      <template #header>
+        <span class="dialog-title-bold">反馈处理</span>
+      </template>
+      <el-form label-width="80px" class="edit-form">
+        <el-form-item label="内容">
+          <el-input :model-value="currentRow?.content" type="textarea" :rows="4" disabled />
+        </el-form-item>
+        <el-form-item label="结果">
+          <el-input v-model="result" type="textarea" :rows="4" placeholder="请输入处理结果" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="visible = false">取消</el-button>
+        <el-button type="primary" @click="save">保存</el-button>
+      </template>
+    </el-dialog>
+  </el-card>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { Refresh } from '@element-plus/icons-vue'
 import { adminApi, type AdminFeedback } from '../api/admin'
 
 const rows = ref<AdminFeedback[]>([])
@@ -81,5 +97,95 @@ onMounted(loadRows)
 </script>
 
 <style scoped>
-.card-header { display: flex; justify-content: space-between; align-items: center; }
+.table-card {
+  border-radius: 12px;
+  border: none;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.title-dot {
+  width: 4px;
+  height: 16px;
+  background: #409eff;
+  border-radius: 2px;
+  margin-right: 8px;
+}
+
+.modern-table {
+  --el-table-tr-bg-color: #fff;
+  --el-table-header-bg-color: #f8f9fa;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+:deep(.el-table--border th),
+:deep(.el-table--border td) {
+  border-right: none;
+}
+
+:deep(.el-table--border::after),
+:deep(.el-table--border::before) {
+  background-color: transparent;
+}
+
+:deep(.el-table th) {
+  border-bottom: 1px solid #ebeef5;
+}
+
+:deep(.el-table td) {
+  border-bottom: 1px solid #ebeef5;
+}
+
+.highlight-text {
+  color: #409eff;
+  font-weight: 600;
+}
+
+.dialog-title-bold {
+  font-size: 16px;
+  font-weight: 700;
+  color: #303133;
+}
+
+.edit-form {
+  padding-top: 10px;
+}
+
+:deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #606266;
+}
+
+.mr-4 {
+  margin-right: 4px;
+}
+
+.title-dot {
+  background: #000000 !important;
+}
+
+:deep(.card-header .el-button--primary) {
+  background: #fff !important;
+  border: 1px solid #333 !important;
+  color: #333 !important;
+  border-radius: 10px !important;
+}
+:deep(.card-header .el-button--primary:hover) {
+  background: #f9f9f9 !important;
+  border-color: #000 !important;
+  color: #000 !important;
+}
 </style>
