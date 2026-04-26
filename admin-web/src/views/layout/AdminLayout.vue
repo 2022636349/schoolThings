@@ -101,9 +101,11 @@
       </header>
 
       <main class="main-content">
-        <router-view v-slot="{ Component }">
+        <router-view v-slot="{ Component, route }">
           <transition name="fade-transform" mode="out-in">
-            <component :is="Component" />
+            <div :key="route.path" class="route-page">
+              <component :is="Component" />
+            </div>
           </transition>
         </router-view>
       </main>
@@ -314,6 +316,10 @@ const changePassword = async () => {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
+}
+
+.route-page {
+  min-height: 100%;
 }
 
 .pwd-dialog {

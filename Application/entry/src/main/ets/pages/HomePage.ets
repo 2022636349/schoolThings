@@ -39,6 +39,7 @@ struct HomePage {
   @StorageProp('tabletRightParams') rightPanelParams: string = '';
   @StorageProp('widgetAction') @Watch('onWidgetAction') widgetAction: string = '';
   @StorageProp('currentIndex') currentIndex: number = 0;
+  @StorageProp('messageListRefresh') @Watch('onMessageListRefresh') messageListRefreshTrigger: number = 0;
   @State topHeight: number = 0;
   @State bottomHeight: number = 0;
   @State scaleList: number[] = [1, 1, 1, 1];
@@ -54,6 +55,7 @@ struct HomePage {
   @StorageProp('isOnline') isOnline: boolean = true;
   private unreadPollTimer: number = -1;
   private lastNotifyTime: number = 0;
+  private lastMessageListRefreshTime: number = 0;
   private currentUserId: string = '';
 
   private readonly MESSAGE_TAB_INDEX: number = 2;
@@ -89,10 +91,6 @@ struct HomePage {
       this.mainPageRefreshTrigger++;
     }
     this.handleWidgetNavigation();
-    if (this.currentIndex === this.MESSAGE_TAB_INDEX) {
-      this.hasUnreadMessage = false;
-      this.saveLastReadTime();
-    }
     if (this.currentUserId) {
       this.pollUnread(false);
     }
@@ -146,6 +144,19 @@ struct HomePage {
 
   }
 
+  onMessageListRefresh(): void {
+    if (this.currentUserId) {
+      this.pollUnread(false, false);
+    }
+  }
+
+  private refreshMessageListIfNeeded(): void {
+    const now = Date.now();
+    if (now - this.lastMessageListRefreshTime < 1200) return;
+    this.lastMessageListRefreshTime = now;
+    AppStorage.setOrCreate('messageListRefresh', now);
+  }
+
   onWidgetAction(): void {
     if (!this.widgetAction) return;
     const action = this.widgetAction;
@@ -193,16 +204,14 @@ struct HomePage {
     }
   }
 
-  async pollUnread(showNotification: boolean = true): Promise<void> {
+  async pollUnread(showNotification: boolean = true, refreshVisibleList: boolean = true): Promise<void> {
     if (!this.currentUserId) return;
     try {
       const store = preferences.getPreferencesSync(getContext(this), { name: 'message_state' });
       let lastReadTime = store.getSync('lastReadTime', 0) as number;
       if (lastReadTime === 0) {
-        lastReadTime = Date.now();
-        store.putSync('lastReadTime', lastReadTime);
+        store.putSync('lastReadTime', Date.now());
         store.flush();
-        return;
       }
 
       const sessions = await ChatService.getSessionsForUser(this.currentUserId);
@@ -216,6 +225,9 @@ struct HomePage {
       const hasUnread = summary.count > 0;
 
       if (hasUnread) {
+        if (refreshVisibleList && this.currentIndex === this.MESSAGE_TAB_INDEX) {
+          this.refreshMessageListIfNeeded();
+        }
         if (!this.hasUnreadMessage) {
           this.hasUnreadMessage = true;
           if (showNotification && this.currentIndex !== this.MESSAGE_TAB_INDEX) {
@@ -312,12 +324,6 @@ struct HomePage {
     }
   }
 
-  saveLastReadTime(): void {
-    const store = preferences.getPreferencesSync(getContext(this), { name: 'message_state' });
-    store.putSync('lastReadTime', Date.now());
-    store.flush();
-  }
-
   private tabItems: TabItem[] = [
     { title: $r('app.string.homepage_front'), icon: $r('app.media.frontpage'), icon_s: $r('app.media.frontpage_s') },
     { title: $r('app.string.homepage_hall'),  icon: $r('app.media.dating'), icon_s: $r('app.media.dating_s') },
@@ -344,14 +350,12 @@ struct HomePage {
     if (changed && index === 1 && prevIndex !== 1) {
       this.hallPageAnimationTrigger++;
     }
+    if (changed && index === this.MESSAGE_TAB_INDEX && this.hasUnreadMessage) {
+      this.refreshMessageListIfNeeded();
+    }
 
     if (this.isTablet && changed) {
       this.clearTabletRightPanel();
-    }
-
-    if (index === this.MESSAGE_TAB_INDEX) {
-      this.hasUnreadMessage = false;
-      this.saveLastReadTime();
     }
 
     this.capsuleScale = 1.06;
@@ -665,7 +669,7 @@ struct HomePage {
           .width(22).height(22)
           .scale({ x: this.getScale(index), y: this.getScale(index) })
           .animation({ duration: 200, curve: Curve.FastOutSlowIn })
-        if (index === this.MESSAGE_TAB_INDEX && this.hasUnreadMessage && this.currentIndex !== this.MESSAGE_TAB_INDEX) {
+        if (index === this.MESSAGE_TAB_INDEX && this.hasUnreadMessage) {
           Circle()
             .width(8).height(8)
             .fill('#FF3B30')

@@ -159,8 +159,6 @@ export struct ChatPage {
       this.pollTimer = -1;
     }
     this.markCurrentSessionRead();
-
-    AppStorage.setOrCreate('messageListRefresh', Date.now());
   }
 
   private async markCurrentSessionRead(): Promise<void> {
@@ -170,7 +168,7 @@ export struct ChatPage {
       const store = preferences.getPreferencesSync(getContext(this), { name: 'message_state' });
       store.putSync('lastReadMsgId_' + this.sessionId, maxMsgId);
       store.putSync('lastReadTime', Date.now());
-      store.flush();
+      await store.flush();
     } catch (e) {
     }
     AppStorage.setOrCreate('messageListRefresh', Date.now());

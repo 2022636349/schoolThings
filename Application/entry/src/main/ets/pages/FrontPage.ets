@@ -145,6 +145,17 @@ export struct FrontPage {
     router.pushUrl({ url: 'pages/PostPage', params: { height: this.topHeight } });
   }
 
+  private openMyPosts(): void {
+    if (AppStorage.get<boolean>('isTabletMode') === true) {
+      AppStorage.setOrCreate('tabletPrevRightType', 'none');
+      AppStorage.setOrCreate('tabletPrevRightParams', '');
+      AppStorage.setOrCreate('tabletRightParams', '');
+      AppStorage.setOrCreate('tabletRightType', 'myPosts');
+      return;
+    }
+    router.pushUrl({ url: 'pages/MyPostsPage' });
+  }
+
   private openAnnouncement(): void {
     if (this.announcements.length === 0) return;
     const current = this.announcements[this.currentAnnouncementIndex] || this.announcements[0];
@@ -252,7 +263,7 @@ export struct FrontPage {
           .layoutWeight(1)
           .onClick(() => { this.openHall(); })
 
-        Button('发布线索')
+        Button('我的发布')
           .fontSize(14)
           .fontWeight(FontWeight.Medium)
           .fontColor('#FFFFFF')
@@ -260,7 +271,7 @@ export struct FrontPage {
           .height(40)
           .borderRadius(20)
           .layoutWeight(1)
-          .onClick(() => { this.openPost(); })
+          .onClick(() => { this.openMyPosts(); })
       }
       .width('100%')
     }

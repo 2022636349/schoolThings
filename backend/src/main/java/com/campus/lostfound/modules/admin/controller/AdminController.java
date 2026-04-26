@@ -2,7 +2,9 @@ package com.campus.lostfound.modules.admin.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.campus.lostfound.common.exception.BusinessException;
 import com.campus.lostfound.common.result.Result;
+import com.campus.lostfound.common.result.ResultCode;
 import com.campus.lostfound.common.util.JwtUtil;
 import com.campus.lostfound.common.util.UserContext;
 import com.campus.lostfound.modules.admin.dto.*;
@@ -264,7 +266,11 @@ public class AdminController {
     @Operation(summary = "反馈列表")
     @GetMapping("/feedbacks")
     public Result<List<AdminFeedbackVO>> feedbacks() {
-        List<Feedback> items = feedbackMapper.selectList(new LambdaQueryWrapper<Feedback>().orderByDesc(Feedback::getId).last("LIMIT 100"));
+        List<Feedback> items = feedbackMapper.selectList(new LambdaQueryWrapper<Feedback>()
+                .eq(Feedback::getModule, "feedback")
+                .eq(Feedback::getAction, "submit")
+                .orderByDesc(Feedback::getId)
+                .last("LIMIT 100"));
         List<AdminFeedbackVO> list = new ArrayList<>();
         for (Feedback item : items) {
             AdminFeedbackVO vo = new AdminFeedbackVO();
@@ -272,7 +278,7 @@ public class AdminController {
             vo.setUserId(item.getUserId() == null ? null : String.valueOf(item.getUserId()));
             vo.setUserName(item.getUserName());
             vo.setContent(item.getParams());
-            vo.setResult(item.getResult());
+            vo.setResult(item.getErrorMsg());
             vo.setCreatedAt(toMillis(item.getCreatedAt()));
             list.add(vo);
         }
@@ -284,7 +290,8 @@ public class AdminController {
     public Result<Void> updateFeedbackResult(@PathVariable("id") Long id, @RequestBody UpdateFeedbackReq req) {
         Feedback item = new Feedback();
         item.setId(id);
-        item.setResult(req.getResult());
+        item.setResult(hasText(req.getResult()) ? "replied" : "pending");
+        item.setErrorMsg(req.getResult());
         feedbackMapper.updateById(item);
         return Result.success();
     }
@@ -445,10 +452,14 @@ public class AdminController {
         if (current == null) {
             return Result.success();
         }
+        if (!"pending".equals(current.getStatus())) {
+            throw new BusinessException(ResultCode.FAIL, "该异议已处理，请勿重复提交");
+        }
         Report item = new Report();
         item.setId(id);
         item.setStatus(req.getStatus());
         item.setResolution(req.getResolution());
+        item.setUpdatedAt(LocalDateTime.now());
         reportMapper.updateById(item);
         Item targetItem = null;
         if ("item".equals(current.getTargetType()) && current.getTargetId() != null) {

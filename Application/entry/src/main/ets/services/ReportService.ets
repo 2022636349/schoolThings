@@ -12,9 +12,13 @@ interface ReportRaw {
   targetType: string;
   targetId: number;
   reporterId: string;
+  targetTitle: string;
   description: string;
   status: string;
+  resolution: string;
+  result?: string;
   createdAt: number;
+  updatedAt: number;
 }
 
 function toDispute(raw: ReportRaw): Dispute {
@@ -22,9 +26,12 @@ function toDispute(raw: ReportRaw): Dispute {
   item.disputeId = raw.id;
   item.itemId = raw.targetId;
   item.userId = raw.reporterId || '';
+  item.targetTitle = raw.targetTitle || '';
   item.description = raw.description || '';
   item.status = raw.status || 'pending';
+  item.resolution = raw.resolution || raw.result || '';
   item.createTime = raw.createdAt > 0 ? new Date(raw.createdAt) : null;
+  item.updateTime = raw.updatedAt > 0 ? new Date(raw.updatedAt) : null;
   return item;
 }
 

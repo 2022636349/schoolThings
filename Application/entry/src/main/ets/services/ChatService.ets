@@ -110,6 +110,10 @@ interface MessageListQuery extends Record<string, string | number | boolean | nu
   afterMsgId?: number;
 }
 
+interface SessionListQuery extends Record<string, string | number | boolean | null | undefined> {
+  _t: number;
+}
+
 interface UnreadBody {
   lastReadMsgIds: Record<string, number>;
   hidden?: Record<string, number>;
@@ -129,7 +133,8 @@ export class ChatService {
 
   static async getSessionsForUser(_userId: string): Promise<ChatSession[]> {
     try {
-      const list = await ApiClient.get<SessionRaw[]>('/chat/sessions');
+      const query: SessionListQuery = { _t: Date.now() };
+      const list = await ApiClient.get<SessionRaw[]>('/chat/sessions', query);
       if (!list) return [];
       const out: ChatSession[] = [];
       for (const r of list) out.push(toSession(r));

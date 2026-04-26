@@ -1,6 +1,8 @@
 package com.campus.lostfound.modules.report.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campus.lostfound.modules.item.entity.Item;
+import com.campus.lostfound.modules.item.mapper.ItemMapper;
 import com.campus.lostfound.modules.report.dto.ReportVO;
 import com.campus.lostfound.modules.report.entity.Report;
 import com.campus.lostfound.modules.report.mapper.ReportMapper;
@@ -17,6 +19,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ReportServiceImpl implements ReportService {
     private final ReportMapper reportMapper;
+    private final ItemMapper itemMapper;
 
     @Override
     public ReportVO create(Long reporterId, String targetType, Long targetId, String description) {
@@ -51,9 +54,24 @@ public class ReportServiceImpl implements ReportService {
         vo.setTargetType(report.getTargetType());
         vo.setTargetId(report.getTargetId());
         vo.setReporterId(report.getReporterId() == null ? null : String.valueOf(report.getReporterId()));
+        vo.setTargetTitle(resolveTargetTitle(report));
         vo.setDescription(report.getDescription());
         vo.setStatus(report.getStatus());
-        vo.setCreatedAt(report.getCreatedAt() == null ? 0L : report.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli());
+        vo.setResolution(report.getResolution());
+        vo.setCreatedAt(toMillis(report.getCreatedAt()));
+        vo.setUpdatedAt(toMillis(report.getUpdatedAt()));
         return vo;
+    }
+
+    private String resolveTargetTitle(Report report) {
+        if (report == null || !"item".equals(report.getTargetType()) || report.getTargetId() == null) {
+            return null;
+        }
+        Item item = itemMapper.selectById(report.getTargetId());
+        return item == null ? null : item.getTitle();
+    }
+
+    private long toMillis(LocalDateTime time) {
+        return time == null ? 0L : time.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
     }
 }

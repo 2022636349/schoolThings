@@ -5,23 +5,28 @@
         <div class="header-title">
           <span class="title-dot"></span>
           <span>意见反馈中心</span>
+          <el-tag class="pending-count" type="warning" effect="light">未回复 {{ pendingCount }}</el-tag>
         </div>
-        <el-button type="primary" @click="loadRows">
-          <el-icon class="mr-4">
-            <Refresh />
-          </el-icon>刷新
-        </el-button>
+        <div class="toolbar">
+          <el-segmented v-model="replyFilter" :options="replyOptions" />
+          <el-button type="primary" @click="loadRows">
+            <el-icon class="mr-4">
+              <Refresh />
+            </el-icon>刷新
+          </el-button>
+        </div>
       </div>
     </template>
 
-    <el-table :data="rows" v-loading="loading" class="modern-table"
+    <el-table :data="filteredRows" v-loading="loading" class="modern-table"
       :header-cell-style="{ background: '#f8f9fa', color: '#606266', fontWeight: 600 }">
       <el-table-column prop="id" label="ID" width="80" align="center" />
       <el-table-column prop="userName" label="用户" width="140" align="center" />
       <el-table-column prop="content" label="反馈内容" min-width="260" show-overflow-tooltip />
-      <el-table-column label="处理结果" min-width="180" show-overflow-tooltip align="center">
+      <el-table-column label="管理员回复" min-width="220" show-overflow-tooltip align="center">
         <template #default="scope">
-          <span class="highlight-text">{{ scope.row.result || '未处理' }}</span>
+          <el-tag v-if="!scope.row.result" type="warning" effect="light">未回复</el-tag>
+          <span v-else class="highlight-text">{{ scope.row.result }}</span>
         </template>
       </el-table-column>
       <el-table-column label="提交时间" min-width="170" align="center">
@@ -29,7 +34,9 @@
       </el-table-column>
       <el-table-column label="操作" width="160" fixed="right" align="center">
         <template #default="scope">
-          <el-button link type="primary" size="small" @click="openEdit(scope.row)">处理</el-button>
+          <el-button link type="primary" size="small" @click="openEdit(scope.row)">
+            {{ scope.row.result ? '修改回复' : '回复' }}
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -43,20 +50,20 @@
         <el-form-item label="内容">
           <el-input :model-value="currentRow?.content" type="textarea" :rows="4" disabled />
         </el-form-item>
-        <el-form-item label="结果">
-          <el-input v-model="result" type="textarea" :rows="4" placeholder="请输入处理结果" />
+        <el-form-item label="回复">
+          <el-input v-model="result" type="textarea" :rows="4" placeholder="请输入会同步给用户查看的回复内容" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" @click="save">保存回复</el-button>
       </template>
     </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { adminApi, type AdminFeedback } from '../api/admin'
 
@@ -65,6 +72,25 @@ const loading = ref(false)
 const visible = ref(false)
 const currentRow = ref<AdminFeedback | null>(null)
 const result = ref('')
+const replyFilter = ref('pending')
+const replyOptions = [
+  { label: '未回复', value: 'pending' },
+  { label: '已回复', value: 'replied' },
+  { label: '全部', value: 'all' }
+]
+
+const pendingCount = computed(() => rows.value.filter(item => !item.result).length)
+
+const filteredRows = computed(() => {
+  const source = replyFilter.value === 'all'
+    ? rows.value
+    : rows.value.filter(item => replyFilter.value === 'pending' ? !item.result : !!item.result)
+  return [...source].sort((a, b) => {
+    if (!a.result && b.result) return -1
+    if (a.result && !b.result) return 1
+    return b.id - a.id
+  })
+})
 
 const loadRows = async () => {
   loading.value = true
@@ -83,7 +109,7 @@ const openEdit = (row: AdminFeedback) => {
 
 const save = async () => {
   if (!currentRow.value) return
-  await adminApi.updateFeedbackResult(currentRow.value.id, result.value)
+  await adminApi.updateFeedbackResult(currentRow.value.id, result.value.trim())
   visible.value = false
   await loadRows()
 }
@@ -106,6 +132,8 @@ onMounted(loadRows)
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .header-title {
@@ -114,6 +142,19 @@ onMounted(loadRows)
   font-size: 16px;
   font-weight: 600;
   color: #303133;
+  gap: 8px;
+}
+
+.pending-count {
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .title-dot {

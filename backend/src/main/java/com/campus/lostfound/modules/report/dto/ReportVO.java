@@ -8,7 +8,10 @@ public class ReportVO {
     private String targetType;
     private Long targetId;
     private String reporterId;
+    private String targetTitle;
     private String description;
     private String status;
+    private String resolution;
     private Long createdAt;
+    private Long updatedAt;
 }

@@ -18,6 +18,7 @@ interface ChatItemCardPayload {
 const MSG_STATE_STORE = 'message_state';
 const PER_SESSION_READ_PREFIX = 'lastReadMsgId_';
 const HIDDEN_PREFIX = 'hidden_';
+const MESSAGE_TAB_INDEX = 2;
 
 interface SessionRow {
   session: ChatSession;
@@ -38,13 +39,22 @@ export struct MessagePage {
   @State isRefreshing: boolean = false;
   @State currentUserId: string = '';
   @State topHeight: number = 0;
+  @State animatedRowCount: number = 0;
 
   @StorageProp('messageListRefresh') @Watch('onMessageListRefresh') messageListRefreshTrigger: number = 0;
+  @StorageProp('currentIndex') @Watch('onCurrentIndexChange') activeTabIndex: number = 0;
+  private listAnimationToken: number = 0;
 
   onMessageListRefresh(): void {
     if (this.currentUserId) {
       this.isRefreshing = true;
       this.loadSessions(this.currentUserId).finally(() => { this.isRefreshing = false; });
+    }
+  }
+
+  onCurrentIndexChange(): void {
+    if (this.activeTabIndex === MESSAGE_TAB_INDEX) {
+      this.playListEnterAnimation();
     }
   }
 
@@ -68,6 +78,7 @@ export struct MessagePage {
       const allSessions = await ChatService.getSessionsForUser(userId);
       if (allSessions.length === 0) {
         this.sessionRows = [];
+        this.animatedRowCount = 0;
         this.isLoading = false;
         return;
       }
@@ -81,6 +92,7 @@ export struct MessagePage {
       });
       if (sessions.length === 0) {
         this.sessionRows = [];
+        this.animatedRowCount = 0;
         this.isLoading = false;
         return;
       }
@@ -134,6 +146,7 @@ export struct MessagePage {
         } as SessionRow;
       });
       this.sessionRows = rows;
+      this.playListEnterAnimation();
     } catch (error) {
       console.error('[MessagePage] 加载会话失败:', error);
     } finally {
@@ -194,13 +207,50 @@ export struct MessagePage {
     this.isRefreshing = false;
   }
 
+  private playListEnterAnimation(): void {
+    const rowCount = this.sessionRows.length;
+    this.listAnimationToken++;
+    const token = this.listAnimationToken;
+    if (rowCount === 0) {
+      this.animatedRowCount = 0;
+      return;
+    }
+
+    this.animatedRowCount = 0;
+    const animatedCount = Math.min(rowCount, 12);
+    for (let i = 0; i < animatedCount; i++) {
+      setTimeout(() => {
+        if (token !== this.listAnimationToken) return;
+        animateTo({ duration: 340, curve: Curve.EaseOut }, () => {
+          this.animatedRowCount = i + 1;
+        });
+      }, i * 72);
+    }
+    if (rowCount > animatedCount) {
+      setTimeout(() => {
+        if (token !== this.listAnimationToken) return;
+        animateTo({ duration: 220, curve: Curve.EaseOut }, () => {
+          this.animatedRowCount = rowCount;
+        });
+      }, animatedCount * 72 + 80);
+    }
+  }
+
+  private getRowOpacity(index: number): number {
+    return index < this.animatedRowCount ? 1 : 0;
+  }
+
+  private getRowTranslateY(index: number): number {
+    return index < this.animatedRowCount ? 0 : 22;
+  }
+
   async markSessionRead(sessionId: string): Promise<void> {
     try {
       const maxMsgId = await ChatService.getMaxMsgId(sessionId);
       const store = preferences.getPreferencesSync(getContext(this), { name: MSG_STATE_STORE });
       store.putSync(PER_SESSION_READ_PREFIX + sessionId, maxMsgId);
       store.putSync('lastReadTime', Date.now());
-      store.flush();
+      await store.flush();
     } catch (e) {  }
 
     const newRows: SessionRow[] = [];
@@ -222,6 +272,7 @@ export struct MessagePage {
       }
     }
     this.sessionRows = newRows;
+    AppStorage.setOrCreate('messageListRefresh', Date.now());
   }
 
   async deleteSession(row: SessionRow): Promise<void> {
@@ -306,7 +357,7 @@ export struct MessagePage {
               .width('100%').height(300).justifyContent(FlexAlign.Center)
             }
           } else {
-            ForEach(this.sessionRows, (row: SessionRow) => {
+            ForEach(this.sessionRows, (row: SessionRow, index: number) => {
               ListItem() {
                 Row({ space: 12 }) {
 
@@ -374,6 +425,8 @@ export struct MessagePage {
                 .width('100%')
                 .padding({ left: 16, right: 16, top: 14, bottom: 14 })
                 .backgroundColor($r('app.color.bg_card'))
+                .translate({ x: 0, y: this.getRowTranslateY(index) })
+                .opacity(this.getRowOpacity(index))
                 .onClick(() => { this.openChat(row) })
               }
               .swipeAction({ end: { builder: () => { this.deleteSwipeAction(row) } } })
@@ -381,7 +434,9 @@ export struct MessagePage {
               ListItem() {
                 Divider().color($r('app.color.divider2')).margin({ left: 76 })
               }
-            }, (row: SessionRow): string => row.session.sessionId)
+              .translate({ x: 0, y: this.getRowTranslateY(index) })
+              .opacity(this.getRowOpacity(index))
+            }, (row: SessionRow): string => `${row.session.sessionId}_${row.session.lastTime?.getTime() || 0}_${row.session.lastMessage || ''}_${row.unreadCount}`)
           }
         }
         .width('100%')

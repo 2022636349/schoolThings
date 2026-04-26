@@ -5,16 +5,20 @@
         <div class="header-title">
           <span class="title-dot"></span>
           <span>举报投诉处理</span>
+          <el-tag class="pending-count" type="warning" effect="light">待处理 {{ pendingCount }}</el-tag>
         </div>
-        <el-button type="primary" @click="loadRows">
-          <el-icon class="mr-4">
-            <Refresh />
-          </el-icon>刷新
-        </el-button>
+        <div class="toolbar">
+          <el-segmented v-model="statusFilter" :options="statusOptions" />
+          <el-button type="primary" @click="loadRows">
+            <el-icon class="mr-4">
+              <Refresh />
+            </el-icon>刷新
+          </el-button>
+        </div>
       </div>
     </template>
 
-    <el-table :data="rows" v-loading="loading" class="modern-table"
+    <el-table :data="filteredRows" v-loading="loading" class="modern-table"
       :header-cell-style="{ background: '#f8f9fa', color: '#606266', fontWeight: 600 }">
       <el-table-column prop="id" label="ID" width="80" align="center" />
       <el-table-column prop="targetType" label="目标类型" width="110" align="center">
@@ -41,8 +45,11 @@
       <el-table-column label="操作" width="220" fixed="right" align="center">
         <template #default="scope">
           <el-button link type="primary" size="small" @click="showDetail(scope.row)">详情</el-button>
-          <el-button link type="success" size="small" @click="openReview(scope.row, 'resolved')">处理</el-button>
-          <el-button link type="danger" size="small" @click="openReview(scope.row, 'rejected')">驳回</el-button>
+          <template v-if="scope.row.status === 'pending'">
+            <el-button link type="success" size="small" @click="openReview(scope.row, 'resolved')">处理</el-button>
+            <el-button link type="danger" size="small" @click="openReview(scope.row, 'rejected')">驳回</el-button>
+          </template>
+          <el-text v-else type="info" size="small">已完成</el-text>
         </template>
       </el-table-column>
     </el-table>
@@ -86,7 +93,7 @@
       </template>
       <el-form label-width="120px" class="review-form">
         <el-form-item label="处理备注">
-          <el-input v-model="reviewForm.resolution" type="textarea" :rows="4" placeholder="处理结果说明" />
+          <el-input v-model="reviewForm.resolution" type="textarea" :rows="4" placeholder="请填写会同步给用户查看的处理结果说明" />
         </el-form-item>
         <el-form-item label="帖子状态" v-if="currentRow?.targetType === 'item'">
           <el-select v-model="reviewForm.itemStatus" clearable placeholder="可选">
@@ -127,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { adminApi, type AdminReport } from '../api/admin'
 
@@ -136,6 +143,13 @@ const loading = ref(false)
 const detailVisible = ref(false)
 const reviewVisible = ref(false)
 const currentRow = ref<AdminReport | null>(null)
+const statusFilter = ref('pending')
+const statusOptions = [
+  { label: '待处理', value: 'pending' },
+  { label: '已处理', value: 'resolved' },
+  { label: '已驳回', value: 'rejected' },
+  { label: '全部', value: 'all' }
+]
 const reviewForm = reactive({
   id: 0,
   status: 'resolved',
@@ -147,6 +161,19 @@ const reviewForm = reactive({
   publisherFraudDelta: 0,
   claimantHeartDelta: 0,
   claimantFraudDelta: 0
+})
+
+const pendingCount = computed(() => rows.value.filter(item => item.status === 'pending').length)
+
+const filteredRows = computed(() => {
+  const source = statusFilter.value === 'all'
+    ? rows.value
+    : rows.value.filter(item => item.status === statusFilter.value)
+  return [...source].sort((a, b) => {
+    if (a.status === 'pending' && b.status !== 'pending') return -1
+    if (a.status !== 'pending' && b.status === 'pending') return 1
+    return b.id - a.id
+  })
 })
 
 const statusText = (status: string) => {
@@ -176,10 +203,11 @@ const showDetail = (row: AdminReport) => {
 }
 
 const openReview = (row: AdminReport, status: string) => {
+  if (row.status !== 'pending') return
   currentRow.value = row
   reviewForm.id = row.id
   reviewForm.status = status
-  reviewForm.resolution = row.resolution || ''
+  reviewForm.resolution = row.resolution || (status === 'resolved' ? '异议已核实并处理。' : '异议依据不足，暂不支持处理。')
   reviewForm.itemStatus = undefined
   reviewForm.reporterHeartDelta = 0
   reviewForm.reporterFraudDelta = 0
@@ -224,6 +252,8 @@ onMounted(loadRows)
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .header-title {
@@ -232,6 +262,19 @@ onMounted(loadRows)
   font-size: 16px;
   font-weight: 600;
   color: #303133;
+  gap: 8px;
+}
+
+.pending-count {
+  margin-left: 4px;
+  font-weight: 500;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .title-dot {

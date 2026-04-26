@@ -247,6 +247,10 @@
     {
       "name": "common_check_size",
       "value": "The image size cannot exceed 2 MB."
+    },
+    {
+      "name": "distributed_data_permission_reason",
+      "value": "用于在登录同一账号的手机和平板之间同步发布草稿内容。"
     }
   ]
 }

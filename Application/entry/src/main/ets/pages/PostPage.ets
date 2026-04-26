@@ -2,6 +2,7 @@ import { router, window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import picker from '@ohos.file.picker';
 import { PostService, MediaItem } from '../services/PostService';
+import { PostDraftService, PostDraftData, DraftRemoteChange } from '../services/PostDraftService';
 import { PostForm } from '../components/PostForm';
 import { MeteorOverlay } from '../components/MeteorOverlay';
 
@@ -39,6 +40,9 @@ export struct PostPage {
   @State isSubmitting: boolean = false;
   @State topHeight: number = 0;
   @State bottomHeight: number = 0;
+  @State hasLoadedDraft: boolean = false;
+  @State lastAppliedAt: number = 0;
+  private remoteListener: ((change: DraftRemoteChange) => void) | null = null;
 
   private closeSelf(): void {
     if (AppStorage.get<boolean>('isTabletMode') === true) {
@@ -49,6 +53,126 @@ export struct PostPage {
     } else {
       router.back();
     }
+  }
+
+  private hasDraftContent(): boolean {
+    return this.title.trim().length > 0
+      || this.description.trim().length > 0
+      || this.category.length > 0
+      || this.lostTime > 0
+      || this.location.trim().length > 0
+      || this.contact.trim().length > 0
+      || this.type !== 'found'
+      || this.mediaList.length > 0
+      || this.imageUrl.length > 0;
+  }
+
+  private buildDraftData(): PostDraftData {
+    return {
+      title: this.title,
+      description: this.description,
+      category: this.category,
+      lostTime: this.lostTime,
+      location: this.location,
+      contact: this.contact,
+      type: this.type,
+      imageUrl: this.imageUrl,
+      mediaList: this.mediaList,
+      updatedAt: Date.now()
+    };
+  }
+
+  private applyDraft(draft: PostDraftData): void {
+    this.title = draft.title || '';
+    this.description = draft.description || '';
+    this.category = draft.category || '';
+    this.lostTime = draft.lostTime || 0;
+    this.location = draft.location || '';
+    this.contact = draft.contact || '';
+    this.type = draft.type || 'found';
+    this.imageUrl = draft.imageUrl || '';
+    this.mediaList = draft.mediaList || [];
+    this.lastAppliedAt = draft.updatedAt || 0;
+  }
+
+  private clearForm(): void {
+    this.title = '';
+    this.description = '';
+    this.category = '';
+    this.lostTime = 0;
+    this.location = '';
+    this.contact = '';
+    this.type = 'found';
+    this.imageUrl = '';
+    this.mediaList = [];
+    this.lastAppliedAt = 0;
+  }
+
+  private handleRemoteChange(change: DraftRemoteChange): void {
+    if (this.isEditMode) return;
+    if (change.deleted) {
+      if (change.updatedAt > this.lastAppliedAt) {
+        this.clearForm();
+        this.lastAppliedAt = change.updatedAt;
+        this.getUIContext().getPromptAction().showToast({ message: '草稿已在其他设备清空' });
+      }
+      return;
+    }
+    if (!change.draft) return;
+    if (change.draft.updatedAt <= this.lastAppliedAt) return;
+    this.applyDraft(change.draft);
+    this.getUIContext().getPromptAction().showToast({ message: '已同步其他设备的草稿' });
+  }
+
+  private async restoreDraftIfNeeded(): Promise<void> {
+    if (this.isEditMode || this.hasLoadedDraft) {
+      return;
+    }
+    this.hasLoadedDraft = true;
+    const context = getContext(this) as common.UIAbilityContext;
+    const localDraft = PostDraftService.load(context);
+    if (localDraft) {
+      this.applyDraft(localDraft);
+    }
+    const latestDraft = await PostDraftService.loadLatest(context);
+    if (latestDraft) {
+      this.applyDraft(latestDraft);
+      this.getUIContext().getPromptAction().showToast({ message: '已恢复同步草稿' });
+    } else if (localDraft) {
+      this.clearForm();
+    }
+  }
+
+  private saveDraftAndClose(): void {
+    PostDraftService.save(getContext(this) as common.UIAbilityContext, this.buildDraftData());
+    this.getUIContext().getPromptAction().showToast({ message: '草稿已保留' });
+    this.closeSelf();
+  }
+
+  private clearDraftAndClose(): void {
+    PostDraftService.clear(getContext(this) as common.UIAbilityContext);
+    this.closeSelf();
+  }
+
+  private confirmBeforeClose(): void {
+    if (this.isEditMode || !this.hasDraftContent()) {
+      this.closeSelf();
+      return;
+    }
+    AlertDialog.show({
+      title: '保留草稿',
+      message: '当前发布内容还没有提交，是否保留为草稿？下次打开发布页面会自动恢复。',
+      primaryButton: {
+        value: '不保留',
+        fontColor: '#FF4D4F',
+        action: () => { this.clearDraftAndClose(); }
+      },
+      secondaryButton: {
+        value: '保留',
+        action: () => { this.saveDraftAndClose(); }
+      },
+      alignment: DialogAlignment.Center
+    });
   }
 
   aboutToAppear(): void {
@@ -80,7 +204,27 @@ export struct PostPage {
       } catch (e) {
         this.mediaList = [];
       }
+    } else {
+      this.restoreDraftIfNeeded();
     }
+
+    if (!this.isEditMode) {
+      const ctx = getContext(this) as common.UIAbilityContext;
+      this.remoteListener = (change: DraftRemoteChange): void => { this.handleRemoteChange(change); };
+      PostDraftService.subscribeRemote(ctx, this.remoteListener);
+    }
+  }
+
+  aboutToDisappear(): void {
+    if (this.remoteListener) {
+      PostDraftService.unsubscribeRemote(this.remoteListener);
+      this.remoteListener = null;
+    }
+  }
+
+  onBackPress(): boolean {
+    this.confirmBeforeClose();
+    return true;
   }
 
   private async handleImagePick(): Promise<void> {
@@ -160,6 +304,9 @@ export struct PostPage {
         );
       }
       this.getUIContext().getPromptAction().showToast({ message: this.isEditMode ? '更新成功' : '发布成功' });
+      if (!this.isEditMode) {
+        PostDraftService.clear(getContext(this) as common.UIAbilityContext);
+      }
       AppStorage.setOrCreate('myPostsRefresh', Date.now());
       AppStorage.setOrCreate('homeNeedRefresh', true);
       this.closeSelf();
@@ -183,7 +330,7 @@ export struct PostPage {
         .width(40).height(40).borderRadius(20)
         .backgroundColor($r('app.color.bg_secondary'))
         .justifyContent(FlexAlign.Center)
-        .onClick(() => { this.closeSelf() })
+        .onClick(() => { this.confirmBeforeClose() })
 
         Text(this.isEditMode ? '编辑物品' : '发布物品')
           .fontSize(17).fontWeight(FontWeight.Medium)
