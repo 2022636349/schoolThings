@@ -4,17 +4,26 @@ import {PersonalPage} from './PersonalPage'
 import {DetailPage} from './DetailPage'
 import {ChatPage} from './ChatPage'
 import {MyPostsPage} from './MyPostsPage'
+import {MyLikedPage} from './MyLikedPage'
+import {MyReportsPage} from './MyReportsPage'
+import {FeedbackPage} from './FeedbackPage'
+import {SettingsPage} from './SettingsPage'
 import {FrontPage} from './FrontPage'
 import {RankingPage} from './RankingPage'
 import {WarningPage} from './WarningPage'
+import {AnnouncementDetailPage} from './AnnouncementDetailPage'
+import {PostPage} from './PostPage'
 import { router, window, display } from '@kit.ArkUI';
 import { ChatService } from '../services/ChatService';
 import { AuthService } from '../services/AuthService';
+import { AnnouncementService } from '../services/AnnouncementService';
+import { ItemService } from '../services/ItemService';
 import { preferences } from '@kit.ArkData';
 import { notificationManager } from '@kit.NotificationKit';
 import { common } from '@kit.AbilityKit';
 import { formProvider, formBindingData } from '@kit.FormKit';
 import { pushService } from '@kit.PushKit';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
 interface TabItem {
   title: ResourceStr;
@@ -25,8 +34,11 @@ interface TabItem {
 @Entry
 @Component
 struct HomePage {
-  // 4+1 结构：0=首页 1=大厅 [中间+按钮] 2=消息 3=我的
-  @State currentIndex: number = 0;
+
+  @StorageProp('tabletRightType') @Watch('onRightPanelChange') rightPanelType: string = 'none';
+  @StorageProp('tabletRightParams') rightPanelParams: string = '';
+  @StorageProp('widgetAction') @Watch('onWidgetAction') widgetAction: string = '';
+  @StorageProp('currentIndex') currentIndex: number = 0;
   @State topHeight: number = 0;
   @State bottomHeight: number = 0;
   @State scaleList: number[] = [1, 1, 1, 1];
@@ -34,18 +46,16 @@ struct HomePage {
   @State capsuleScale: number = 1.0;
   @State addBtnScale: number = 1.0;
   @State mainPageRefreshTrigger: number = 0;
+  @State frontPageAnimationTrigger: number = 0;
+  @State hallPageAnimationTrigger: number = 0;
   @State hasUnreadMessage: boolean = false;
   @State isTablet: boolean = false;
-  @StorageProp('tabletRightType') @Watch('onRightPanelChange') rightPanelType: string = 'none';
-  @StorageProp('tabletRightParams') rightPanelParams: string = '';
-  @StorageProp('widgetAction') @Watch('onWidgetAction') widgetAction: string = '';
-  // 全局网络连通性（由 NetworkMonitor 写入）
+
   @StorageProp('isOnline') isOnline: boolean = true;
   private unreadPollTimer: number = -1;
   private lastNotifyTime: number = 0;
   private currentUserId: string = '';
 
-  // 消息 tab 索引（便于集中管理）
   private readonly MESSAGE_TAB_INDEX: number = 2;
 
   aboutToAppear(): void {
@@ -78,6 +88,7 @@ struct HomePage {
       AppStorage.setOrCreate('homeNeedRefresh', false);
       this.mainPageRefreshTrigger++;
     }
+    this.handleWidgetNavigation();
     if (this.currentIndex === this.MESSAGE_TAB_INDEX) {
       this.hasUnreadMessage = false;
       this.saveLastReadTime();
@@ -89,14 +100,50 @@ struct HomePage {
     if (pendingRefresh > 0 && this.currentUserId) {
       this.pollUnread(false);
     }
+  }
+
+  private async handleWidgetNavigation(): Promise<void> {
     const pendingAction = AppStorage.get<string>('widgetAction');
     if (pendingAction && pendingAction.length > 0) {
       this.onWidgetAction();
+      return;
+    }
+    const pendingAnnouncementId = AppStorage.get<string>('widgetAnnouncementId');
+    if (pendingAnnouncementId && pendingAnnouncementId.length > 0) {
+      AppStorage.setOrCreate('widgetAnnouncementId', '');
+      if (AppStorage.get<boolean>('isTabletMode') === true) {
+        AppStorage.setOrCreate('tabletPrevRightType', 'none');
+        AppStorage.setOrCreate('tabletPrevRightParams', '');
+        AppStorage.setOrCreate('tabletRightParams', JSON.stringify({ id: Number(pendingAnnouncementId) }));
+        AppStorage.setOrCreate('tabletRightType', 'announcementDetail');
+      } else {
+        router.pushUrl({ url: 'pages/AnnouncementDetailPage', params: { id: Number(pendingAnnouncementId) } });
+      }
+      return;
+    }
+    const pendingHotItemId = AppStorage.get<string>('widgetHotItemId');
+    if (pendingHotItemId && pendingHotItemId.length > 0) {
+      AppStorage.setOrCreate('widgetHotItemId', '');
+      ItemService.detail(Number(pendingHotItemId)).then((hot) => {
+        if (!hot) {
+          return;
+        }
+        if (AppStorage.get<boolean>('isTabletMode') === true) {
+          AppStorage.setOrCreate('tabletPrevRightType', 'none');
+          AppStorage.setOrCreate('tabletPrevRightParams', '');
+          AppStorage.setOrCreate('tabletRightParams', JSON.stringify(hot));
+          AppStorage.setOrCreate('tabletRightType', 'detail');
+        } else {
+          router.pushUrl({ url: 'pages/DetailPage', params: hot });
+        }
+      }).catch((e: Error) => {
+        console.error('[HomePage] handleWidgetNavigation hot detail failed:', e);
+      });
     }
   }
 
   onRightPanelChange(): void {
-    // 右侧面板变化时的处理（预留）
+
   }
 
   onWidgetAction(): void {
@@ -106,11 +153,16 @@ struct HomePage {
     if (action === 'message') {
       this.switchTab(this.MESSAGE_TAB_INDEX);
     } else if (action === 'post') {
-      router.pushUrl({ url: 'pages/PostPage', params: { height: this.topHeight } });
+      if (this.isTablet) {
+        AppStorage.setOrCreate('tabletPrevRightType', 'none');
+        AppStorage.setOrCreate('tabletPrevRightParams', '');
+        AppStorage.setOrCreate('tabletRightParams', JSON.stringify({ height: this.topHeight }));
+        AppStorage.setOrCreate('tabletRightType', 'post');
+      } else {
+        router.pushUrl({ url: 'pages/PostPage', params: { height: this.topHeight } });
+      }
     }
   }
-
-  // ── 消息未读轮询 & 通知 ──
 
   async initUnreadPolling(): Promise<void> {
     try {
@@ -184,7 +236,39 @@ struct HomePage {
       const widgetStore = preferences.getPreferencesSync(getContext(this), { name: 'widget_data' });
       widgetStore.putSync('unreadCount', unreadCount);
       widgetStore.putSync('latestMessage', latestMessage);
-      widgetStore.flush();
+      this.updateWidgetContent(widgetStore).then(() => {
+        widgetStore.flush();
+        this.refreshWidgetForms(unreadCount, latestMessage);
+      });
+    } catch (e) {
+      console.error('[HomePage] updateWidgetData failed:', e);
+    }
+  }
+
+  private async updateWidgetContent(widgetStore: preferences.Preferences): Promise<void> {
+    try {
+      const announcements = await AnnouncementService.list(1);
+      widgetStore.putSync('announcementTitle', announcements.length > 0 ? announcements[0].title : '');
+      widgetStore.putSync('announcementId', announcements.length > 0 ? String(announcements[0].id) : '');
+    } catch (e) {
+      widgetStore.putSync('announcementTitle', '');
+    }
+    try {
+      const hot = await ItemService.listHot(1);
+      widgetStore.putSync('hotTitle', hot.length > 0 ? (hot[0].text || '') : '');
+      widgetStore.putSync('hotItemId', hot.length > 0 ? String(hot[0].itemId) : '');
+    } catch (e) {
+      widgetStore.putSync('hotTitle', '');
+    }
+  }
+
+  private refreshWidgetForms(unreadCount: number, latestMessage: string): void {
+    try {
+      const widgetStore = preferences.getPreferencesSync(getContext(this), { name: 'widget_data' });
+      const announcementTitle = widgetStore.getSync('announcementTitle', '') as string;
+      const hotTitle = widgetStore.getSync('hotTitle', '') as string;
+      const announcementId = widgetStore.getSync('announcementId', '') as string;
+      const hotItemId = widgetStore.getSync('hotItemId', '') as string;
       const formIdStore = preferences.getPreferencesSync(getContext(this), { name: 'widget_form_ids' });
       const allKeys = formIdStore.getAllSync();
       const keys = Object.keys(allKeys);
@@ -192,6 +276,10 @@ struct HomePage {
       const data: Record<string, Object> = {};
       data['unreadCount'] = unreadCount;
       data['latestMessage'] = latestMessage;
+      data['announcementTitle'] = announcementTitle;
+      data['hotTitle'] = hotTitle;
+      data['announcementId'] = announcementId;
+      data['hotItemId'] = hotItemId;
       const bindingData = formBindingData.createFormBindingData(data);
       for (const formId of keys) {
         formProvider.updateForm(formId, bindingData).catch((err: Error) => {
@@ -199,7 +287,7 @@ struct HomePage {
         });
       }
     } catch (e) {
-      console.error('[HomePage] updateWidgetData failed:', e);
+      console.error('[HomePage] refreshWidgetForms failed:', e);
     }
   }
 
@@ -230,8 +318,6 @@ struct HomePage {
     store.flush();
   }
 
-  // ── 导航栏逻辑 ──
-
   private tabItems: TabItem[] = [
     { title: $r('app.string.homepage_front'), icon: $r('app.media.frontpage'), icon_s: $r('app.media.frontpage_s') },
     { title: $r('app.string.homepage_hall'),  icon: $r('app.media.dating'), icon_s: $r('app.media.dating_s') },
@@ -239,18 +325,28 @@ struct HomePage {
     { title: $r('app.string.homepage_my'),      icon: $r('app.media.my'),      icon_s: $r('app.media.my_s') }
   ];
 
-  switchTab(index: number): void {
-    this.currentIndex = index;
+  private clearTabletRightPanel(): void {
+    AppStorage.setOrCreate('tabletRightType', 'none');
+    AppStorage.setOrCreate('tabletRightParams', '');
+    AppStorage.setOrCreate('tabletPrevRightType', 'none');
+    AppStorage.setOrCreate('tabletPrevRightParams', '');
+  }
 
-    if (this.isTablet) {
-      if (index === 0 || index === 1) {
-        AppStorage.setOrCreate('tabletRightType', 'none');
-      } else if (index === 2) {
-        AppStorage.setOrCreate('tabletRightType', 'message');
-      } else if (index === 3) {
-        AppStorage.setOrCreate('tabletRightType', 'personal');
-      }
-      AppStorage.setOrCreate('tabletPrevRightType', 'none');
+  switchTab(index: number): void {
+    const changed = this.currentIndex !== index;
+    const prevIndex = this.currentIndex;
+    this.currentIndex = index;
+    AppStorage.setOrCreate('currentIndex', index);
+
+    if (changed && index === 0 && prevIndex !== 0) {
+      this.frontPageAnimationTrigger++;
+    }
+    if (changed && index === 1 && prevIndex !== 1) {
+      this.hallPageAnimationTrigger++;
+    }
+
+    if (this.isTablet && changed) {
+      this.clearTabletRightPanel();
     }
 
     if (index === this.MESSAGE_TAB_INDEX) {
@@ -258,7 +354,6 @@ struct HomePage {
       this.saveLastReadTime();
     }
 
-    // 胶囊 / slider 弹动
     this.capsuleScale = 1.06;
     setTimeout(() => { this.capsuleScale = 1.0; }, 220);
     this.sliderScale = 1.2;
@@ -278,51 +373,62 @@ struct HomePage {
     return this.scaleList[index] ?? 1.0;
   }
 
-  // 中间加号按钮点击
   onAddClick(): void {
     this.addBtnScale = 0.88;
     setTimeout(() => { this.addBtnScale = 1.0; }, 180);
+    if (this.isTablet) {
+      AppStorage.setOrCreate('tabletPrevRightType', 'none');
+      AppStorage.setOrCreate('tabletPrevRightParams', '');
+      AppStorage.setOrCreate('tabletRightParams', JSON.stringify({ height: this.topHeight }));
+      AppStorage.setOrCreate('tabletRightType', 'post');
+      return;
+    }
     router.pushUrl({ url: 'pages/PostPage', params: { height: this.topHeight } });
   }
 
-  // slider 气泡在 4 个 tab 上的位移（跳过中间的 + 区域）
-  // 布局：[tab0 22%][tab1 22%][+ 12% 间距][tab2 22%][tab3 22%]
-  // 气泡宽 18%，其左边距随 currentIndex 变化
   getBubbleLeft(): string {
-    // 气泡 anchor 左边距
+
     if (this.currentIndex === 0) return '2%';
     if (this.currentIndex === 1) return '22%';
     if (this.currentIndex === 2) return '61%';
     return '81%';
   }
 
-  // ── 构建 ──
-
   build() {
-    if (this.isTablet) {
-      this.buildTabletLayout()
-    } else {
-      this.buildPhoneLayout()
+    Stack() {
+      if (this.isTablet) {
+        this.buildTabletLayout()
+      } else {
+        this.buildPhoneLayout()
+      }
+      MeteorOverlay()
     }
+    .width('100%')
+    .height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
-  // ── 手机布局 ──
   @Builder
   buildPhoneLayout() {
     Stack({ alignContent: Alignment.Bottom }) {
 
       Column() {
-        // 离线横幅（覆盖状态栏区域）
+
         if (!this.isOnline) {
           this.buildOfflineBanner()
         }
 
         Tabs({ barPosition: BarPosition.End, index: this.currentIndex }) {
           TabContent() {
-            FrontPage({ topHeight: this.getEffectiveTopHeight(), bottomHeight: this.bottomHeight })
+            FrontPage({
+              topHeight: this.getEffectiveTopHeight(),
+              bottomHeight: this.bottomHeight,
+              refreshTrigger: this.frontPageAnimationTrigger,
+              onOpenHall: (): void => { this.switchTab(1); }
+            })
           }
           TabContent() {
-            HallPage({ topHeight: this.getEffectiveTopHeight(), bottomHeight: this.bottomHeight, refreshTrigger: this.mainPageRefreshTrigger })
+            HallPage({ topHeight: this.getEffectiveTopHeight(), bottomHeight: this.bottomHeight, refreshTrigger: this.mainPageRefreshTrigger, animationTrigger: this.hallPageAnimationTrigger })
           }
           TabContent() {
             MessagePage({ topHeight: this.getEffectiveTopHeight() })
@@ -332,7 +438,7 @@ struct HomePage {
           }
         }
         .scrollable(false)
-        .onChange((index: number) => { this.currentIndex = index })
+        .onChange((index: number) => { this.switchTab(index) })
         .animationDuration(0)
         .barHeight(0)
         .width('100%')
@@ -341,7 +447,6 @@ struct HomePage {
       .width('100%')
       .height('100%')
 
-      // 悬浮导航胶囊（包含 4 tab + 凸起的 + 按钮）
       this.buildNavCapsuleWithAdd()
     }
     .width('100%')
@@ -349,7 +454,6 @@ struct HomePage {
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
-  // ── 平板布局 ──
   @Builder
   buildTabletLayout() {
     Column() {
@@ -360,21 +464,24 @@ struct HomePage {
       Row() {
         Stack({ alignContent: Alignment.Bottom }) {
           if (this.currentIndex === 0) {
-            FrontPage({ topHeight: this.getEffectiveTopHeight(), bottomHeight: this.bottomHeight })
+            FrontPage({
+              topHeight: this.getEffectiveTopHeight(),
+              bottomHeight: this.bottomHeight,
+              refreshTrigger: this.frontPageAnimationTrigger,
+              onOpenHall: (): void => { this.switchTab(1); }
+            })
+          } else if (this.currentIndex === 1) {
+            HallPage({ topHeight: this.getEffectiveTopHeight(), bottomHeight: this.bottomHeight, refreshTrigger: this.mainPageRefreshTrigger, animationTrigger: this.hallPageAnimationTrigger })
+          } else if (this.currentIndex === 2) {
+            MessagePage({ topHeight: this.getEffectiveTopHeight() })
           } else {
-            HallPage({ topHeight: this.getEffectiveTopHeight(), bottomHeight: this.bottomHeight, refreshTrigger: this.mainPageRefreshTrigger })
+            PersonalPage({ topHeight: this.getEffectiveTopHeight() })
           }
 
-          // 导航胶囊（含 + 按钮）
           this.buildNavCapsuleWithAdd()
         }
         .width('40%')
         .height('100%')
-        .onTouch((event: TouchEvent) => {
-          if (event.type === TouchType.Down && this.currentIndex > 1) {
-            this.currentIndex = 0;
-          }
-        })
 
         Column()
           .width(0.5)
@@ -382,20 +489,28 @@ struct HomePage {
           .backgroundColor($r('app.color.divider'))
 
         Column() {
-          if (this.rightPanelType === 'message') {
-            MessagePage({ topHeight: this.getEffectiveTopHeight() })
-          } else if (this.rightPanelType === 'personal') {
-            PersonalPage({ topHeight: this.getEffectiveTopHeight() })
-          } else if (this.rightPanelType === 'detail') {
+          if (this.rightPanelType === 'detail') {
             DetailPage({ paramsJson: this.rightPanelParams })
           } else if (this.rightPanelType === 'chat') {
             ChatPage({ paramsJson: this.rightPanelParams })
           } else if (this.rightPanelType === 'myPosts') {
             MyPostsPage()
+          } else if (this.rightPanelType === 'myLiked') {
+            MyLikedPage()
+          } else if (this.rightPanelType === 'myReports') {
+            MyReportsPage()
+          } else if (this.rightPanelType === 'feedback') {
+            FeedbackPage()
+          } else if (this.rightPanelType === 'settings') {
+            SettingsPage()
+          } else if (this.rightPanelType === 'post') {
+            PostPage({ paramsJson: this.rightPanelParams })
           } else if (this.rightPanelType === 'ranking') {
             RankingPage()
           } else if (this.rightPanelType === 'warning') {
             WarningPage()
+          } else if (this.rightPanelType === 'announcementDetail') {
+            AnnouncementDetailPage({ paramsJson: this.rightPanelParams })
           } else {
             Column() {
               Image($r('app.media.startIcon'))
@@ -422,16 +537,14 @@ struct HomePage {
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
-  // 离线时，子页不再预留状态栏高度（横幅已占用该区域）
   private getEffectiveTopHeight(): number {
     return this.isOnline ? this.topHeight : 0;
   }
 
-  // 离线横幅：延伸到状态栏，醒目提示网络已断开
   @Builder
   buildOfflineBanner() {
     Column() {
-      // 状态栏占位：让橙色背景一直顶到屏幕顶部
+
       Column().width('100%').height(this.topHeight)
 
       Row({ space: 8 }) {
@@ -451,16 +564,14 @@ struct HomePage {
     .backgroundColor('#FF6B35')
   }
 
-  // ── 4 tab 胶囊 + 中央凸起 + 按钮 ──
   @Builder
   buildNavCapsuleWithAdd() {
     Stack({ alignContent: Alignment.Top }) {
-      // 胶囊主体（4 tabs）
+
       this.buildNavCapsule()
 
-      // 中央凸起的 + 按钮（提升到胶囊上方约 14vp）
       Stack() {
-        // 主体
+
         Column() {
           Image($r('app.media.add'))
             .width(32).height(32)
@@ -484,7 +595,7 @@ struct HomePage {
     }
     .margin({ bottom: this.bottomHeight + 16 })
     .width('95%')
-    .height(86) // 64 胶囊 + 22 凸起
+    .height(86)
   }
 
   @Builder
@@ -492,14 +603,12 @@ struct HomePage {
     Row() {
       Stack({ alignContent: Alignment.Start }) {
 
-        // 玻璃主体
         Row()
           .width('100%').height('100%')
           .borderRadius(31)
           .backdropBlur(8)
           .backgroundColor('rgba(255, 255, 255, 0.12)')
 
-        // 液态气泡（4 tab 的选中背景）
         Row()
           .margin({ left: this.getBubbleLeft() })
           .width('17%')
@@ -510,18 +619,17 @@ struct HomePage {
           .scale({ x: this.sliderScale, y: this.sliderScale })
           .animation({ duration: 350, curve: Curve.FastOutSlowIn })
 
-        // Tab 图标 + 中间留白
         Row() {
-          // Tab 0
+
           this.buildTabSlot(0)
-          // Tab 1
+
           this.buildTabSlot(1)
-          // 中间占位（容纳凸起 + 按钮的投影区）
+
           Column()
             .width('20%').height('100%')
-          // Tab 2
+
           this.buildTabSlot(2)
-          // Tab 3
+
           this.buildTabSlot(3)
         }
         .width('100%').height('100%')
@@ -531,7 +639,7 @@ struct HomePage {
       .borderRadius(31)
       .clip(true)
     }
-    .position({ x: 0, y: 22 }) // 胶囊往下偏，让 + 凸出在胶囊顶部
+    .position({ x: 0, y: 22 })
     .width('100%')
     .height(64)
     .borderRadius(32)

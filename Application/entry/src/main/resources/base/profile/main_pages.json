@@ -2,7 +2,6 @@
   "src": [
     "pages/LoginPage",
     "pages/HomePage",
-    "pages/MainPage",
     "pages/HallPage",
     "pages/MessagePage",
     "pages/PersonalPage",

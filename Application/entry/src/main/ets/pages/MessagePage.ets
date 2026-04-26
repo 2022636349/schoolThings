@@ -2,7 +2,6 @@ import { router } from '@kit.ArkUI';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
-import { promptAction } from '@kit.ArkUI';
 import { TopNavBar } from '../components/TopNavBar';
 import { AuthService } from '../services/AuthService';
 import { ChatService } from '../services/ChatService';
@@ -39,7 +38,7 @@ export struct MessagePage {
   @State isRefreshing: boolean = false;
   @State currentUserId: string = '';
   @State topHeight: number = 0;
-  // 退出 ChatPage / 推送到达时，由其他组件 bump 这个值 → 触发 reload
+
   @StorageProp('messageListRefresh') @Watch('onMessageListRefresh') messageListRefreshTrigger: number = 0;
 
   onMessageListRefresh(): void {
@@ -73,7 +72,6 @@ export struct MessagePage {
         return;
       }
 
-      // 过滤被单方面删除的会话（若之后有新消息则自动恢复可见）
       const store0 = preferences.getPreferencesSync(getContext(this), { name: MSG_STATE_STORE });
       const sessions = allSessions.filter((s: ChatSession): boolean => {
         const h = store0.getSync(HIDDEN_PREFIX + s.sessionId, 0) as number;
@@ -87,7 +85,6 @@ export struct MessagePage {
         return;
       }
 
-      // 收集对方用户 ID（去重）
       const otherIds: string[] = [];
       for (const s of sessions) {
         const otherId = s.initiatorId === userId ? s.ownerId : s.initiatorId;
@@ -97,8 +94,7 @@ export struct MessagePage {
       }
       const publisherMap = await UserService.getPublisherInfoByIds(otherIds);
 
-      // 加载每个会话对应的物品信息
-      const itemMap: Record<string, string[]> = {}; // itemId -> [type, text]
+      const itemMap: Record<string, string[]> = {};
       for (const s of sessions) {
         const key = s.itemId.toString();
         if (!itemMap[key]) {
@@ -111,7 +107,6 @@ export struct MessagePage {
         }
       }
 
-      // 读取每个会话的"最后已读 msgId"偏好
       const lastReadMsgIdMap: Record<string, number> = {};
       try {
         const store = preferences.getPreferencesSync(getContext(this), { name: MSG_STATE_STORE });
@@ -119,9 +114,8 @@ export struct MessagePage {
           const key = PER_SESSION_READ_PREFIX + s.sessionId;
           lastReadMsgIdMap[s.sessionId] = store.getSync(key, 0) as number;
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) {  }
 
-      // 并发统计每会话未读数
       const unreadCountMap = await ChatService.getPerSessionUnreadCounts(userId, lastReadMsgIdMap);
 
       const rows: SessionRow[] = sessions.map((s: ChatSession): SessionRow => {
@@ -160,20 +154,20 @@ export struct MessagePage {
 
   getTypeLabel(type: string): string {
     if (type === 'lost') return '寻物';
-    if (type === 'find') return '招领';
+    if (type === 'found') return '招领';
     if (type === 'claimed') return '已认领';
     return '';
   }
 
   getTypeColor(type: string): string {
     if (type === 'lost') return '#E07B39';
-    if (type === 'find') return '#4E8FDF';
+    if (type === 'found') return '#4E8FDF';
     return '#4CAF50';
   }
 
   getTypeBgColor(type: string): ResourceColor {
     if (type === 'lost') return $r('app.color.badge_lost_bg');
-    if (type === 'find') return $r('app.color.badge_find_bg');
+    if (type === 'found') return $r('app.color.badge_find_bg');
     return $r('app.color.badge_claimed_bg');
   }
 
@@ -200,7 +194,6 @@ export struct MessagePage {
     this.isRefreshing = false;
   }
 
-  // 标记某会话已读：查询最大 msgId 存入偏好（用 msgId 避免时钟差问题）
   async markSessionRead(sessionId: string): Promise<void> {
     try {
       const maxMsgId = await ChatService.getMaxMsgId(sessionId);
@@ -208,8 +201,8 @@ export struct MessagePage {
       store.putSync(PER_SESSION_READ_PREFIX + sessionId, maxMsgId);
       store.putSync('lastReadTime', Date.now());
       store.flush();
-    } catch (e) { /* ignore */ }
-    // 本地同步清零徽标（强 key 触发重渲）
+    } catch (e) {  }
+
     const newRows: SessionRow[] = [];
     for (let i = 0; i < this.sessionRows.length; i++) {
       const r = this.sessionRows[i];
@@ -231,28 +224,26 @@ export struct MessagePage {
     this.sessionRows = newRows;
   }
 
-  // 单方面删除：只写本地 hidden_{sid} 偏好，不动云端数据
-  // 对方再发消息时（session.lastTime > hiddenTime）会自动重新显示
   async deleteSession(row: SessionRow): Promise<void> {
     const sid = row.session.sessionId;
     try {
-      // hiddenTime 必须 ≥ session.lastTime，否则当下就会判定"有新消息"重新冒出来
+
       let hideTime = Date.now();
       if (row.session.lastTime) {
         const lt = row.session.lastTime.getTime();
         if (lt + 1000 > hideTime) hideTime = lt + 1000;
       }
-      // 同时把已读游标顶到最大 msgId
+
       const maxMsgId = await ChatService.getMaxMsgId(sid);
       const store = preferences.getPreferencesSync(getContext(this), { name: MSG_STATE_STORE });
       store.putSync(HIDDEN_PREFIX + sid, hideTime);
       store.putSync(PER_SESSION_READ_PREFIX + sid, maxMsgId);
       store.flush();
       this.sessionRows = this.sessionRows.filter((r: SessionRow) => r.session.sessionId !== sid);
-      promptAction.showToast({ message: '已删除', duration: 1500 });
+      this.getUIContext().getPromptAction().showToast({ message: '已删除', duration: 1500 });
     } catch (e) {
       console.error('[MessagePage] deleteSession failed:', e);
-      promptAction.showToast({ message: '删除失败', duration: 1500 });
+      this.getUIContext().getPromptAction().showToast({ message: '删除失败', duration: 1500 });
     }
   }
 
@@ -271,7 +262,7 @@ export struct MessagePage {
   openChat(row: SessionRow): void {
     const s = row.session;
     const isInitiator = s.initiatorId === this.currentUserId;
-    // 标记已读（fire-and-forget，异步查询 maxMsgId 并写入偏好）
+
     this.markSessionRead(s.sessionId);
     const cp: Record<string, Object> = {};
     cp['sessionId'] = s.sessionId;
@@ -284,7 +275,8 @@ export struct MessagePage {
     cp['otherUserAvatar'] = row.otherUserAvatar;
     cp['isInitiator'] = isInitiator ? 'true' : 'false';
     if (AppStorage.get<boolean>('isTabletMode') === true) {
-      AppStorage.setOrCreate('tabletPrevRightType', 'message');
+      AppStorage.setOrCreate('tabletPrevRightType', 'none');
+      AppStorage.setOrCreate('tabletPrevRightParams', '');
       AppStorage.setOrCreate('tabletRightType', 'chat');
       AppStorage.setOrCreate('tabletRightParams', JSON.stringify(cp));
     } else {
@@ -317,7 +309,7 @@ export struct MessagePage {
             ForEach(this.sessionRows, (row: SessionRow) => {
               ListItem() {
                 Row({ space: 12 }) {
-                  // 头像（带未读红点）
+
                   Stack() {
                     if (row.otherUserAvatar) {
                       Image(row.otherUserAvatar)
@@ -330,7 +322,7 @@ export struct MessagePage {
                           .fontSize(18).fontWeight(FontWeight.Bold).fontColor('#4E8FDF')
                       }.width(48).height(48).borderRadius(24)
                     }
-                    // 未读数徽标（右上角）
+
                     if (row.unreadCount > 0) {
                       Text(row.unreadCount > 99 ? '99+' : row.unreadCount.toString())
                         .fontSize(10).fontColor(Color.White).fontWeight(FontWeight.Bold)

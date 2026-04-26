@@ -1,12 +1,10 @@
 import router from '@ohos.router';
 import { TopNavBar } from '../components/TopNavBar';
-import { promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { AuthService } from '../services/AuthService';
 import { UserService } from '../services/UserService';
 import picker from '@ohos.file.picker';
 
-// ────── 主页面 ──────
 interface MenuItemConfig {
   icon: string | Resource;
   label: string | Resource;
@@ -41,7 +39,7 @@ export struct PersonalPage {
   }
 
   onPageShow(): void {
-    // 从"设置"页返回时刷新，保证编辑资料后的昵称/手机号即时反映
+
     this.loadProfile();
   }
 
@@ -77,12 +75,12 @@ export struct PersonalPage {
       const ctx = getContext(this) as common.UIAbilityContext;
       await UserService.uploadAvatar(ctx, result.photoUris[0]);
       await this.loadProfile();
-      promptAction.showToast({ message: '头像更新成功' });
+      this.getUIContext().getPromptAction().showToast({ message: '头像更新成功' });
       this.isRefreshing = true;
       this.isRefreshing = false;
     } catch (error) {
       console.error('[PersonalPage] 头像上传失败:', error);
-      promptAction.showToast({ message: '头像上传失败，请重试' });
+      this.getUIContext().getPromptAction().showToast({ message: '头像上传失败，请重试' });
     } finally {
       this.isUploadingAvatar = false;
     }
@@ -97,11 +95,9 @@ export struct PersonalPage {
         Scroll() {
           Column({ space: 16 }) {
 
-            // ─── 用户卡片 ───
             Column({ space: 18 }) {
               Row({ space: 16 }) {
 
-                // 头像区域（可点击上传）
                 Stack({ alignContent: Alignment.BottomEnd }) {
                   if (this.avatarUrl) {
                     Image(this.avatarUrl)
@@ -134,7 +130,6 @@ export struct PersonalPage {
                   if (!this.isUploadingAvatar) { this.pickAndUploadAvatar(); }
                 })
 
-                // 用户信息
                 Column({ space: 4 }) {
                   Text(this.name)
                     .fontSize(22).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_secondary'))
@@ -149,7 +144,6 @@ export struct PersonalPage {
               }
               .width('100%')
 
-              // ─── 统计栏：单行 4 个柔色卡片 ───
               Row({ space: 10 }) {
                 this.StatCard({
                   value: this.published.toString(),
@@ -182,14 +176,15 @@ export struct PersonalPage {
             .backgroundColor($r('app.color.bg_card')).borderRadius(16)
             .shadow({ radius: 10, color: 'rgba(0,0,0,0.05)', offsetY: 4 })
 
-            // ─── 功能菜单 ───
             Column() {
               this.OptimizedMenuItem({
                 icon: $r('app.media.send'),
                 label: '我的发布',
                 action: (): void => {
                   if (AppStorage.get<boolean>('isTabletMode') === true) {
-                    AppStorage.setOrCreate('tabletPrevRightType', 'personal');
+                    AppStorage.setOrCreate('tabletPrevRightType', 'none');
+                    AppStorage.setOrCreate('tabletPrevRightParams', '');
+                    AppStorage.setOrCreate('tabletRightParams', '');
                     AppStorage.setOrCreate('tabletRightType', 'myPosts');
                   } else {
                     router.pushUrl({ url: 'pages/MyPostsPage' });
@@ -198,29 +193,64 @@ export struct PersonalPage {
               })
               Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56, right: 56 })
               this.OptimizedMenuItem({
-                icon: $r('app.media.frontpage'),
-                label: '我的收藏',
+                icon: $r('app.media.like'),
+                label: '我的点赞',
                 action: (): void => {
-                  router.pushUrl({ url: 'pages/MyLikedPage' });
+                  if (AppStorage.get<boolean>('isTabletMode') === true) {
+                    AppStorage.setOrCreate('tabletPrevRightType', 'none');
+                    AppStorage.setOrCreate('tabletPrevRightParams', '');
+                    AppStorage.setOrCreate('tabletRightParams', '');
+                    AppStorage.setOrCreate('tabletRightType', 'myLiked');
+                  } else {
+                    router.pushUrl({ url: 'pages/MyLikedPage' });
+                  }
                 }
               })
               Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56, right: 56 })
               this.OptimizedMenuItem({
-                icon: $r('app.media.bill'),
-                label: '我的举报',
-                action: (): void => { router.pushUrl({ url: 'pages/MyReportsPage' }); }
+                icon: $r('app.media.abnormal'),
+                label: '我的异议',
+                action: (): void => {
+                  if (AppStorage.get<boolean>('isTabletMode') === true) {
+                    AppStorage.setOrCreate('tabletPrevRightType', 'none');
+                    AppStorage.setOrCreate('tabletPrevRightParams', '');
+                    AppStorage.setOrCreate('tabletRightParams', '');
+                    AppStorage.setOrCreate('tabletRightType', 'myReports');
+                  } else {
+                    router.pushUrl({ url: 'pages/MyReportsPage' });
+                  }
+                }
               })
               Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56, right: 56 })
               this.OptimizedMenuItem({
-                icon: $r('app.media.message'),
+                icon: $r('app.media.accept'),
                 label: '意见反馈',
-                action: (): void => { router.pushUrl({ url: 'pages/FeedbackPage' }); }
+                action: (): void => {
+                  if (AppStorage.get<boolean>('isTabletMode') === true) {
+                    AppStorage.setOrCreate('tabletPrevRightType', 'none');
+                    AppStorage.setOrCreate('tabletPrevRightParams', '');
+                    AppStorage.setOrCreate('tabletRightParams', '');
+                    AppStorage.setOrCreate('tabletRightType', 'feedback');
+                  } else {
+                    router.pushUrl({ url: 'pages/FeedbackPage' });
+                  }
+                }
               })
               Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56, right: 56 })
               this.OptimizedMenuItem({
-                icon: $r('app.media.my'),
+                icon: $r('app.media.setting'),
                 label: '设置',
-                action: (): void => { router.pushUrl({ url: 'pages/SettingsPage' }); }
+                action: (): void => {
+                  if (AppStorage.get<boolean>('isTabletMode') === true) {
+                    AppStorage.setOrCreate('tabletPrevRightType', 'none');
+                    AppStorage.setOrCreate('tabletPrevRightParams', '');
+                    AppStorage.setOrCreate('tabletRightParams', '');
+                    AppStorage.setOrCreate('tabletRightType', 'settings');
+                  } else {
+                    router.pushUrl({ url: 'pages/SettingsPage' });
+
+                  }
+                }
               })
             }
             .width('100%').backgroundColor($r('app.color.bg_card')).borderRadius(16)

@@ -1,11 +1,11 @@
 import { router } from '@kit.ArkUI';
 import { window } from '@kit.ArkUI';
-import { promptAction } from '@kit.ArkUI';
-import { common } from '@kit.AbilityKit';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
+import { preferences } from '@kit.ArkData';
 import { AuthService } from '../services/AuthService';
 import { UserService } from '../services/UserService';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
-// ────── 修改密码弹窗 ──────
 @CustomDialog
 struct ChangePasswordDialog {
   controller: CustomDialogController = new CustomDialogController({ builder: ChangePasswordDialog() });
@@ -121,6 +121,8 @@ export struct SettingsPage {
   @State editProfileNickname: string = '';
   @State editProfilePhone: string = '';
   @State topHeight: number = 0;
+  @StorageProp('meteorEnabled') meteorEnabled: boolean = true;
+  @StorageProp('darkModeForced') darkModeForced: boolean = false;
 
   private editProfileController: CustomDialogController = new CustomDialogController({
     builder: EditProfileDialog({
@@ -165,11 +167,11 @@ export struct SettingsPage {
     const nextNickname = nickname.trim();
     const nextPhone = phone.trim();
     if (!nextNickname) {
-      promptAction.showToast({ message: '昵称不能为空' });
+      this.getUIContext().getPromptAction().showToast({ message: '昵称不能为空' });
       return;
     }
     if (nextPhone && !/^1[3-9]\d{9}$/.test(nextPhone)) {
-      promptAction.showToast({ message: '手机号格式不正确' });
+      this.getUIContext().getPromptAction().showToast({ message: '手机号格式不正确' });
       return;
     }
     try {
@@ -179,23 +181,23 @@ export struct SettingsPage {
       this.phone = nextPhone;
       this.editProfileNickname = nextNickname;
       this.editProfilePhone = nextPhone;
-      promptAction.showToast({ message: '资料更新成功' });
+      this.getUIContext().getPromptAction().showToast({ message: '资料更新成功' });
     } catch (e) {
-      promptAction.showToast({ message: '资料更新失败，请稍后重试' });
+      this.getUIContext().getPromptAction().showToast({ message: '资料更新失败，请稍后重试' });
     }
   }
 
   async doChangePassword(oldPwd: string, newPwd: string, confirmPwd: string): Promise<void> {
     if (!oldPwd || !newPwd || !confirmPwd) {
-      promptAction.showToast({ message: '请填写完整信息' });
+      this.getUIContext().getPromptAction().showToast({ message: '请填写完整信息' });
       return;
     }
     if (newPwd !== confirmPwd) {
-      promptAction.showToast({ message: '两次密码不一致' });
+      this.getUIContext().getPromptAction().showToast({ message: '两次密码不一致' });
       return;
     }
     if (newPwd.length < 6) {
-      promptAction.showToast({ message: '新密码至少 6 位' });
+      this.getUIContext().getPromptAction().showToast({ message: '新密码至少 6 位' });
       return;
     }
     try {
@@ -206,19 +208,19 @@ export struct SettingsPage {
       );
       if (success) {
         this.changePwdController.close();
-        promptAction.showToast({ message: '密码修改成功' });
+        this.getUIContext().getPromptAction().showToast({ message: '密码修改成功' });
       } else {
-        promptAction.showToast({ message: '当前密码错误，请重试' });
+        this.getUIContext().getPromptAction().showToast({ message: '当前密码错误，请重试' });
       }
     } catch (e) {
-      promptAction.showToast({ message: '修改失败，请稍后重试' });
+      this.getUIContext().getPromptAction().showToast({ message: '修改失败，请稍后重试' });
     }
   }
 
   showAboutUs(): void {
     AlertDialog.show({
       title: '关于我们',
-      message: '校园失物招领\n版本 1.0.0\n\n致力于帮助同学们快速找回失物，让校园更温暖、更有爱。\n\n隐私政策：当前版本为占位说明，后续将补充正式链接。\n用户协议：当前版本为占位说明，后续将补充正式链接。\n\n如有问题请联系管理员。',
+      message: '校园失物招领\n版本 1.0.0\n\n致力于帮助同学们快速找回失物，让校园更温暖、更有爱。\n如有问题请联系管理员。',
       confirm: {
         value: '我知道了',
         action: () => {}
@@ -244,10 +246,43 @@ export struct SettingsPage {
     });
   }
 
+  toggleMeteorEnabled(value: boolean): void {
+    this.meteorEnabled = value;
+    AppStorage.setOrCreate('meteorEnabled', value);
+    if (value) {
+      this.setDarkModeForced(true);
+    }
+    try {
+      const store = preferences.getPreferencesSync(getContext(this), { name: 'app_settings' });
+      store.putSync('meteorEnabled', value);
+      store.flush();
+    } catch (e) {
+    }
+  }
+
+  private setDarkModeForced(value: boolean): void {
+    this.darkModeForced = value;
+    AppStorage.setOrCreate('darkModeForced', value);
+    try {
+      const store = preferences.getPreferencesSync(getContext(this), { name: 'app_settings' });
+      store.putSync('darkModeForced', value);
+      store.flush();
+    } catch (e) {
+    }
+    try {
+      const mode = value
+        ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+        : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT;
+      (getContext(this) as common.UIAbilityContext).getApplicationContext().setColorMode(mode);
+    } catch (e) {
+      console.error('[SettingsPage] setColorMode failed:', JSON.stringify(e));
+    }
+  }
+
   async logout(): Promise<void> {
     try {
       AuthService.clearSession(getContext(this) as common.UIAbilityContext);
-      promptAction.showToast({ message: '已退出登录' });
+      this.getUIContext().getPromptAction().showToast({ message: '已退出登录' });
       router.replaceUrl({ url: 'pages/LoginPage' });
     } catch (error) {
       console.error('退出登录失败:', JSON.stringify(error));
@@ -255,8 +290,9 @@ export struct SettingsPage {
   }
 
   build() {
-    Column() {
-      // 顶部导航
+    Stack() {
+      Column() {
+
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -264,7 +300,16 @@ export struct SettingsPage {
         }
         .width(40).height(40).borderRadius(20)
         .backgroundColor($r('app.color.bg_secondary')).justifyContent(FlexAlign.Center)
-        .onClick(() => { router.back(); })
+        .onClick(() => {
+          if (AppStorage.get<boolean>('isTabletMode') === true) {
+            AppStorage.setOrCreate('tabletRightType', 'none');
+            AppStorage.setOrCreate('tabletRightParams', '');
+            AppStorage.setOrCreate('tabletPrevRightType', 'none');
+            AppStorage.setOrCreate('tabletPrevRightParams', '');
+          } else {
+            router.back();
+          }
+        })
 
         Text('设置')
           .fontSize(17).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_primary'))
@@ -280,7 +325,21 @@ export struct SettingsPage {
       Scroll() {
         Column({ space: 16 }) {
 
-          // ─── 账号与安全 ───
+          Column() {
+            Image($r('app.media.startIcon'))
+              .width(90)
+              .height(90)
+              .margin({ top: 60, bottom: 20 })
+
+            Text('校园失物招领')
+              .fontSize(28)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.text_primary'))
+              .margin({ bottom: 40 })
+              .textShadow({ radius: 2, color: Color.Black, offsetX: 1, offsetY: 1 })
+          }
+          .width('100%')
+
           Column() {
             Text('账号与安全')
               .fontSize(13).fontColor($r('app.color.text_caption'))
@@ -288,7 +347,7 @@ export struct SettingsPage {
 
             Column() {
               this.OptimizedMenuItem({
-                icon: $r('app.media.ic_public_edit'),
+                icon: $r('app.media.editor'),
                 label: '编辑资料',
                 action: (): void => {
                   this.editProfileNickname = this.name;
@@ -309,7 +368,58 @@ export struct SettingsPage {
           }
           .width('100%')
 
-          // ─── 其他 ───
+          Column() {
+            Text('个性化')
+              .fontSize(13).fontColor($r('app.color.text_caption'))
+              .width('100%').padding({ left: 20, top: 4, bottom: 8 })
+
+            Column() {
+              Row({ space: 16 }) {
+                Image($r('app.media.setting'))
+                  .width(22).height(22)
+                Column({ space: 2 }) {
+                  Text('夜间模式')
+                    .fontSize(16).fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.text_primary'))
+                  Text('使用深色界面，也可以手动切回浅色')
+                    .fontSize(12).fontColor($r('app.color.text_hint'))
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1)
+                Toggle({ type: ToggleType.Switch, isOn: this.darkModeForced })
+                  .selectedColor('#4E8FDF')
+                  .onChange((v: boolean) => { this.setDarkModeForced(v); })
+              }
+              .width('100%').height(64)
+              .padding({ left: 20, right: 20 })
+
+              Divider().color($r('app.color.divider')).opacity(0.5).margin({ left: 56, right: 56 })
+
+              Row({ space: 16 }) {
+                Image($r('app.media.star'))
+                  .width(22).height(22)
+                Column({ space: 2 }) {
+                  Text('夜间流星动效')
+                    .fontSize(16).fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.text_primary'))
+                  Text('开启时同步进入夜间模式并显示流星雨')
+                    .fontSize(12).fontColor($r('app.color.text_hint'))
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1)
+                Toggle({ type: ToggleType.Switch, isOn: this.meteorEnabled })
+                  .selectedColor('#4E8FDF')
+                  .onChange((v: boolean) => { this.toggleMeteorEnabled(v); })
+              }
+              .width('100%').height(64)
+              .padding({ left: 20, right: 20 })
+            }
+            .width('100%').backgroundColor($r('app.color.bg_card')).borderRadius(16)
+            .shadow({ radius: 10, color: 'rgba(0,0,0,0.05)', offsetY: 4 })
+            .padding({ top: 4, bottom: 4 })
+          }
+          .width('100%')
+
           Column() {
             Text('其他')
               .fontSize(13).fontColor($r('app.color.text_caption'))
@@ -328,7 +438,6 @@ export struct SettingsPage {
           }
           .width('100%')
 
-          // ─── 退出登录（独立区块，红色） ───
           Column() {
             this.OptimizedMenuItem({
               icon: $r('app.media.logout'),
@@ -348,6 +457,11 @@ export struct SettingsPage {
       .layoutWeight(1)
     }
     .width('100%').height('100%').backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 

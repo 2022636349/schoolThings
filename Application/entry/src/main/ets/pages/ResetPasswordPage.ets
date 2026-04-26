@@ -1,6 +1,7 @@
-import { promptAction, router, window } from '@kit.ArkUI';
+import { router, window } from '@kit.ArkUI';
 import { PasswordResetService } from '../services/PasswordResetService';
 import { SmsCountdownButton } from '../components/SmsCountdownButton';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
 @Entry
 @Component
@@ -31,7 +32,7 @@ export struct ResetPasswordPage {
     }
     try {
       await PasswordResetService.sendCode(this.phone.trim());
-      promptAction.showToast({ message: '验证码已发送' });
+      this.getUIContext().getPromptAction().showToast({ message: '验证码已发送' });
       return true;
     } catch (e) {
       this.errorMessage = e instanceof Error ? e.message : '验证码发送失败';
@@ -60,7 +61,7 @@ export struct ResetPasswordPage {
     this.isSubmitting = true;
     try {
       await PasswordResetService.reset(this.phone.trim(), this.code.trim(), this.password);
-      promptAction.showToast({ message: '密码重置成功，请重新登录' });
+      this.getUIContext().getPromptAction().showToast({ message: '密码重置成功，请重新登录' });
       router.replaceUrl({ url: 'pages/LoginPage' });
     } catch (e) {
       this.errorMessage = e instanceof Error ? e.message : '重置失败';
@@ -70,7 +71,8 @@ export struct ResetPasswordPage {
   }
 
   build() {
-    Column({ space: 16 }) {
+    Stack() {
+      Column({ space: 16 }) {
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -144,5 +146,10 @@ export struct ResetPasswordPage {
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.bg_page'))
+
+      MeteorOverlay()
+    }
+    .width('100%').height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

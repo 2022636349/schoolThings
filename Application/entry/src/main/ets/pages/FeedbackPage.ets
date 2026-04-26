@@ -1,5 +1,6 @@
-import { promptAction, router, window } from '@kit.ArkUI';
+import { router, window } from '@kit.ArkUI';
 import { FeedbackService } from '../services/FeedbackService';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
 @Entry
 @Component
@@ -16,21 +17,29 @@ export struct FeedbackPage {
 
   private async handleSubmit(): Promise<void> {
     if (!this.content.trim()) {
-      promptAction.showToast({ message: '请输入反馈内容' });
+      this.getUIContext().getPromptAction().showToast({ message: '请输入反馈内容' });
       return;
     }
     this.isSubmitting = true;
     try {
       await FeedbackService.submit(this.content.trim());
-      promptAction.showToast({ message: '反馈已提交，感谢你的建议' });
-      router.back();
+      this.getUIContext().getPromptAction().showToast({ message: '反馈已提交，感谢你的建议' });
+      if (AppStorage.get<boolean>('isTabletMode') === true) {
+        AppStorage.setOrCreate('tabletRightType', 'none');
+        AppStorage.setOrCreate('tabletRightParams', '');
+        AppStorage.setOrCreate('tabletPrevRightType', 'none');
+        AppStorage.setOrCreate('tabletPrevRightParams', '');
+      } else {
+        router.back();
+      }
     } finally {
       this.isSubmitting = false;
     }
   }
 
   build() {
-    Column({ space: 16 }) {
+    Stack() {
+      Column({ space: 16 }) {
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -39,7 +48,16 @@ export struct FeedbackPage {
         .width(40).height(40).borderRadius(20)
         .backgroundColor($r('app.color.bg_secondary'))
         .justifyContent(FlexAlign.Center)
-        .onClick(() => { router.back() })
+        .onClick(() => {
+          if (AppStorage.get<boolean>('isTabletMode') === true) {
+            AppStorage.setOrCreate('tabletRightType', 'none');
+            AppStorage.setOrCreate('tabletRightParams', '');
+            AppStorage.setOrCreate('tabletPrevRightType', 'none');
+            AppStorage.setOrCreate('tabletPrevRightParams', '');
+          } else {
+            router.back();
+          }
+        })
 
         Text('意见反馈')
           .fontSize(17).fontWeight(FontWeight.Medium)
@@ -78,5 +96,10 @@ export struct FeedbackPage {
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.bg_page'))
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

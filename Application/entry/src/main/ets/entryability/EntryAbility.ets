@@ -18,20 +18,45 @@ export default class EntryAbility extends UIAbility {
   private bgPollTimer: number = -1;
   private suspendDelayId: number = -1;
 
-  // 冷启动
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam) {
+    this.applyColorModePreference();
+    hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onCreate');
+
+    ApiClient.setContext(this.context);
+
+    NetworkMonitor.start();
+
+    this.parseLaunchWant(want);
+    this.loadAppPreferences();
+  }
+
+  private loadAppPreferences(): void {
     try {
-      this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      const store = preferences.getPreferencesSync(this.context, { name: 'app_settings' });
+      const meteorEnabled = store.getSync('meteorEnabled', true) as boolean;
+      AppStorage.setOrCreate('meteorEnabled', meteorEnabled);
+    } catch (e) {
+      AppStorage.setOrCreate('meteorEnabled', true);
+    }
+    AppStorage.setOrCreate('appInBackground', false);
+  }
+
+  private applyColorModePreference(): void {
+    let darkForced = false;
+    try {
+      const store = preferences.getPreferencesSync(this.context, { name: 'app_settings' });
+      darkForced = store.getSync('darkModeForced', false) as boolean;
+    } catch (e) {
+    }
+    AppStorage.setOrCreate('darkModeForced', darkForced);
+    try {
+      const mode = darkForced
+        ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+        : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT;
+      this.context.getApplicationContext().setColorMode(mode);
     } catch (err) {
       hilog.error(HILOG_DOMAIN, TAG, 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
-    hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onCreate');
-    // 注入全局 context 到 ApiClient，所有 service 都能用
-    ApiClient.setContext(this.context);
-    // 启动全局网络连通性监听（写入 AppStorage['isOnline']）
-    NetworkMonitor.start();
-    // 冷启动：提取跳转参数（卡片或推送点击）
-    this.parseLaunchWant(want);
   }
 
   onDestroy(): void {
@@ -43,11 +68,12 @@ export default class EntryAbility extends UIAbility {
   async onWindowStageCreate(windowStage: window.WindowStage): Promise<void> {
     this.windowStage = windowStage;
     hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onWindowStageCreate');
-    // 确保 context 已注入
+
     ApiClient.setContext(this.context);
 
     const isLoggedIn = AuthService.isLoggedIn(this.context);
     const startPage = isLoggedIn ? 'pages/HomePage' : 'pages/LoginPage';
+    hilog.info(HILOG_DOMAIN, TAG, 'loadContent startPage: %{public}s', startPage);
     windowStage.loadContent(startPage, (err) => {
       if (err.code) {
         hilog.error(HILOG_DOMAIN, TAG, 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
@@ -71,9 +97,17 @@ export default class EntryAbility extends UIAbility {
 
     if (want.parameters) {
       const targetPage = want.parameters['targetPage'] as string;
+      const announcementId = want.parameters['announcementId'] as string;
+      const hotItemId = want.parameters['hotItemId'] as string;
       if (targetPage) {
         if (isLoggedIn) {
           AppStorage.setOrCreate('widgetAction', targetPage);
+          if (announcementId) {
+            AppStorage.setOrCreate('widgetAnnouncementId', announcementId);
+          }
+          if (hotItemId) {
+            AppStorage.setOrCreate('widgetHotItemId', hotItemId);
+          }
         }
         hilog.info(HILOG_DOMAIN, TAG, 'Launch param targetPage: %{public}s', targetPage);
         return;
@@ -95,16 +129,16 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onForeground');
+    AppStorage.setOrCreate('appInBackground', false);
     this.bgPollOnce();
     this.clearBgPoll();
   }
 
   onBackground(): void {
     hilog.info(HILOG_DOMAIN, TAG, '%{public}s', 'Ability onBackground');
+    AppStorage.setOrCreate('appInBackground', true);
     this.startBgMessageCheck();
   }
-
-  // ── 后台消息检测：应用退到后台后继续轮询一段时间 ──
 
   private startBgMessageCheck(): void {
     try {
@@ -130,7 +164,7 @@ export default class EntryAbility extends UIAbility {
     if (this.suspendDelayId !== -1) {
       try {
         backgroundTaskManager.cancelSuspendDelay(this.suspendDelayId);
-      } catch (e) { /* ignore */ }
+      } catch (e) {  }
       this.suspendDelayId = -1;
     }
   }
@@ -142,7 +176,6 @@ export default class EntryAbility extends UIAbility {
       const userId = authStore.getSync('userId', '') as string;
       if (!userId) return;
 
-      // 从本地偏好拉取 lastReadMsgId 和 hidden
       const msgStore = preferences.getPreferencesSync(this.context, { name: 'message_state' });
 
       const sessions = await ChatService.getSessionsForUser(userId);
@@ -196,6 +229,6 @@ export default class EntryAbility extends UIAbility {
           hilog.warn(HILOG_DOMAIN, TAG, 'pushWidgetData updateForm failed: %{public}s', JSON.stringify(err));
         });
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {  }
   }
 }

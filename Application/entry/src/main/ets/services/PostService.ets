@@ -3,7 +3,7 @@ import { ApiClient } from '../common/ApiClient';
 import { UploadService } from './UploadService';
 
 export interface MediaItem {
-  type: string;  // 'image' | 'video'
+  type: string;  
   url: string;
 }
 
@@ -19,11 +19,7 @@ interface CreateItemReqBody {
 }
 
 export class PostService {
-  /**
-   * 发布新物品：
-   * 1) 先把 mediaList 里的本地 URI 逐个上传后台 → 拿到公开 URL
-   * 2) 再调用 POST /items 写入数据库
-   */
+
   static async publish(
     context: common.UIAbilityContext,
     type: string,
@@ -31,7 +27,7 @@ export class PostService {
     location: string,
     mediaList: MediaItem[]
   ): Promise<void> {
-    // 1. 上传媒体
+
     const uploaded: MediaItem[] = [];
     for (let i = 0; i < mediaList.length; i++) {
       const m = mediaList[i];
@@ -41,7 +37,6 @@ export class PostService {
       uploaded.push({ type: m.type, url: url });
     }
 
-    // 2. 调后端创建
     const body: CreateItemReqBody = {
       type: type,
       description: description,
@@ -51,9 +46,6 @@ export class PostService {
     await ApiClient.post<Object>('/items', body, context);
   }
 
-  /**
-   * 带分类 / 时间 / 标题的完整发布
-   */
   static async publishFull(
     context: common.UIAbilityContext,
     type: string,

@@ -98,7 +98,7 @@ export struct ItemCard {
     const now: Date = new Date();
     const diff: number = now.getTime() - date.getTime();
     const days: number = Math.floor(diff / (1000 * 60 * 60 * 24));
-    
+
     if (days === 0) return '今天';
     if (days === 1) return '昨天';
     if (days < 7) return `${days}天前`;

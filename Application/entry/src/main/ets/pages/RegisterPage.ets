@@ -1,18 +1,10 @@
-import { promptAction, router, window } from '@kit.ArkUI';
+import { router, window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { AuthService } from '../services/AuthService';
 import { SmsService } from '../services/SmsService';
 import { SmsCountdownButton } from '../components/SmsCountdownButton';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
-/**
- * 独立注册页
- * 流程：填学号/姓名/手机号 → 获取短信验证码 → 填验证码/密码/确认密码 → 提交
- * 校验：
- *   - 学号：非空，并在提交前查询 UserInfo 表防冲突（isStudentIdTaken）
- *   - 手机号：/^1[3-9]\d{9}$/
- *   - 验证码：通过 SmsService.verifyCode 校验（云函数未部署时走本地兜底）
- *   - 密码：≥6 位，两次一致
- */
 @Entry
 @Component
 struct RegisterPage {
@@ -31,7 +23,9 @@ struct RegisterPage {
     window.getLastWindow(getContext(this)).then((win) => {
       this.topHeight = px2vp(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height);
       this.bottomHeight = px2vp(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR).bottomRect.height);
-    });
+    }).catch(() => {
+      console.log('getLastWindow err')
+    })
   }
 
   private isPhoneValid(): boolean {
@@ -44,7 +38,7 @@ struct RegisterPage {
       this.errorMessage = '请先填写正确的 11 位手机号';
       return false;
     }
-    // 发送前先校验学号是否已被注册，避免白发短信
+
     if (!this.studentId.trim()) {
       this.errorMessage = '请先填写学号';
       return false;
@@ -53,7 +47,7 @@ struct RegisterPage {
       const taken = await AuthService.isStudentIdTaken(this.studentId.trim());
       if (taken) {
         this.errorMessage = '该学号已被注册';
-        promptAction.showToast({ message: '该学号已被注册' });
+        this.getUIContext().getPromptAction().showToast({ message: '该学号已被注册' });
         return false;
       }
     } catch (e) {
@@ -68,13 +62,12 @@ struct RegisterPage {
         return false;
       }
       if (res.debugCode) {
-        // 调试模式：云函数未对接真实短信通道，把验证码直接展示
-        promptAction.showToast({
+        this.getUIContext().getPromptAction().showToast({
           message: `调试模式：验证码 ${res.debugCode}`,
           duration: 4000
         });
       } else {
-        promptAction.showToast({ message: '验证码已发送，请注意查收' });
+        this.getUIContext().getPromptAction().showToast({ message: '验证码已发送，请注意查收' });
       }
       return true;
     } catch (e) {
@@ -113,25 +106,21 @@ struct RegisterPage {
 
     this.isLoading = true;
     try {
-      // 1. 二次查重（防止发送验证码后别人抢注）
       const taken = await AuthService.isStudentIdTaken(sid);
       if (taken) {
         this.errorMessage = '该学号已被注册';
         return;
       }
 
-      // 2. 校验短信验证码
       const verifyRes = await SmsService.verifyCode(phone, code);
       if (!verifyRes.ok) {
         this.errorMessage = verifyRes.msg || '验证码校验失败';
         return;
       }
 
-      // 3. 写入 UserInfo（heartValue/fraudCount 由模型构造函数默认 0）
       await AuthService.register(sid, this.password, name, phone);
 
-      promptAction.showToast({ message: '注册成功，已自动登录' });
-      // 4. 自动登录（沿用 LoginPage.saveSession 约定）
+      this.getUIContext().getPromptAction().showToast({ message: '注册成功，已自动登录' });
       AuthService.saveSession(getContext(this) as common.UIAbilityContext, sid, this.password);
       router.replaceUrl({ url: 'pages/HomePage' });
     } catch (e) {
@@ -142,8 +131,8 @@ struct RegisterPage {
   }
 
   build() {
-    Column() {
-      // 顶部导航
+    Stack() {
+      Column() {
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -167,7 +156,6 @@ struct RegisterPage {
 
       Scroll() {
         Column({ space: 16 }) {
-          // 品牌区
           Column({ space: 8 }) {
             Image($r('app.media.startIcon'))
               .width(72).height(72)
@@ -181,13 +169,11 @@ struct RegisterPage {
           .width('100%').alignItems(HorizontalAlign.Center)
           .margin({ bottom: 8 })
 
-          // 表单卡片
           Column({ space: 14 }) {
             this.buildField('学号', '请输入学号', this.studentId, (v: string) => { this.studentId = v; })
             this.buildField('姓名', '请输入真实姓名', this.userName, (v: string) => { this.userName = v; })
             this.buildField('手机号', '11 位手机号', this.phone, (v: string) => { this.phone = v; }, true)
 
-            // 验证码行
             Column({ space: 8 }) {
               Text('验证码').fontSize(13).fontColor($r('app.color.text_tertiary'))
               Row({ space: 10 }) {
@@ -246,6 +232,11 @@ struct RegisterPage {
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      MeteorOverlay()
+    }
+    .width('100%').height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 

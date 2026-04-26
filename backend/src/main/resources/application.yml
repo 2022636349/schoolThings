@@ -51,6 +51,7 @@ app:
   upload:
     bucket: campus-lostfound
     public-host: http://10.48.220.83:9000
+
   cors:
     allowed-origins: "*"
 

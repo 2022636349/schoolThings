@@ -1,13 +1,10 @@
-import { router, promptAction, window } from '@kit.ArkUI';
+import { router, window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import picker from '@ohos.file.picker';
 import { PostService, MediaItem } from '../services/PostService';
 import { PostForm } from '../components/PostForm';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
-/**
- * 发布物品页面（Phase 3 集成新的 PostForm）
- * 字段：图片 + 名称 + 描述 + 分类 + 丢失时间 + 地点 + 联系方式 + 类型
- */
 interface EditPostParams {
   itemId: number;
   type: string;
@@ -26,7 +23,8 @@ interface EditPostParams {
 
 @Entry
 @Component
-struct PostPage {
+export struct PostPage {
+  @Prop paramsJson: string = '';
   @State itemId: number = 0;
   @State isEditMode: boolean = false;
   @State title: string = '';
@@ -35,19 +33,39 @@ struct PostPage {
   @State lostTime: number = 0;
   @State location: string = '';
   @State contact: string = '';
-  @State type: string = 'lost';
+  @State type: string = 'found';
   @State imageUrl: string = '';
   @State mediaList: MediaItem[] = [];
   @State isSubmitting: boolean = false;
   @State topHeight: number = 0;
   @State bottomHeight: number = 0;
 
+  private closeSelf(): void {
+    if (AppStorage.get<boolean>('isTabletMode') === true) {
+      AppStorage.setOrCreate('tabletRightType', 'none');
+      AppStorage.setOrCreate('tabletRightParams', '');
+      AppStorage.setOrCreate('tabletPrevRightType', 'none');
+      AppStorage.setOrCreate('tabletPrevRightParams', '');
+    } else {
+      router.back();
+    }
+  }
+
   aboutToAppear(): void {
     window.getLastWindow(getContext(this)).then((win) => {
       this.topHeight = px2vp(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height);
       this.bottomHeight = px2vp(win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR).bottomRect.height);
     });
-    const params = router.getParams() as EditPostParams;
+    let params: EditPostParams | null = null;
+    if (this.paramsJson && this.paramsJson.length > 0) {
+      try {
+        params = JSON.parse(this.paramsJson) as EditPostParams;
+      } catch (e) {
+        params = null;
+      }
+    } else {
+      params = router.getParams() as EditPostParams;
+    }
     if (params && params.itemId) {
       this.isEditMode = true;
       this.itemId = params.itemId;
@@ -82,34 +100,34 @@ struct PostPage {
         this.mediaList = nextMedia;
       }
     } catch (error) {
-      promptAction.showToast({ message: '选择图片失败' });
+      this.getUIContext().getPromptAction().showToast({ message: '选择图片失败' });
     }
   }
 
   private async handleSubmit(): Promise<void> {
-    // 验证必填字段
+
     if (!this.title.trim()) {
-      promptAction.showToast({ message: '请输入物品名称' });
+      this.getUIContext().getPromptAction().showToast({ message: '请输入物品名称' });
       return;
     }
     if (!this.description.trim()) {
-      promptAction.showToast({ message: '请输入物品描述' });
+      this.getUIContext().getPromptAction().showToast({ message: '请输入物品描述' });
       return;
     }
     if (!this.category) {
-      promptAction.showToast({ message: '请选择物品分类' });
+      this.getUIContext().getPromptAction().showToast({ message: '请选择物品分类' });
       return;
     }
-    if (this.type === 'lost' && this.lostTime <= 0) {
-      promptAction.showToast({ message: '请选择丢失时间' });
+    if ((this.type === 'lost' || this.type === 'found') && this.lostTime <= 0) {
+      this.getUIContext().getPromptAction().showToast({ message: this.type === 'found' ? '请选择捡到时间' : '请选择丢失时间' });
       return;
     }
     if (!this.location.trim()) {
-      promptAction.showToast({ message: '请输入地点' });
+      this.getUIContext().getPromptAction().showToast({ message: '请输入地点' });
       return;
     }
     if (!this.contact.trim()) {
-      promptAction.showToast({ message: '请输入联系方式' });
+      this.getUIContext().getPromptAction().showToast({ message: '请输入联系方式' });
       return;
     }
 
@@ -141,21 +159,22 @@ struct PostPage {
           this.mediaList
         );
       }
-      promptAction.showToast({ message: this.isEditMode ? '更新成功' : '发布成功' });
+      this.getUIContext().getPromptAction().showToast({ message: this.isEditMode ? '更新成功' : '发布成功' });
       AppStorage.setOrCreate('myPostsRefresh', Date.now());
       AppStorage.setOrCreate('homeNeedRefresh', true);
-      router.back();
+      this.closeSelf();
     } catch (error) {
       const message = error instanceof Error ? error.message : '发布失败';
-      promptAction.showToast({ message });
+      this.getUIContext().getPromptAction().showToast({ message });
     } finally {
       this.isSubmitting = false;
     }
   }
 
   build() {
-    Column() {
-      // 顶部导航
+    Stack() {
+      Column() {
+
       Row() {
         Row() {
           Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -164,7 +183,7 @@ struct PostPage {
         .width(40).height(40).borderRadius(20)
         .backgroundColor($r('app.color.bg_secondary'))
         .justifyContent(FlexAlign.Center)
-        .onClick(() => { router.back() })
+        .onClick(() => { this.closeSelf() })
 
         Text(this.isEditMode ? '编辑物品' : '发布物品')
           .fontSize(17).fontWeight(FontWeight.Medium)
@@ -177,7 +196,6 @@ struct PostPage {
       .padding({ left: 14, right: 14, top: this.topHeight + 10, bottom: 10 })
       .backgroundColor($r('app.color.bg_card'))
 
-      // PostForm 组件
       Scroll() {
         PostForm({
           title: $title,
@@ -199,6 +217,11 @@ struct PostPage {
     }
     .width('100%').height('100%')
     .backgroundColor($r('app.color.bg_page'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

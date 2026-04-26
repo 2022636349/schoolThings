@@ -14,7 +14,7 @@ interface SessionRaw {
   initiatorId: string;
   ownerId: string;
   lastMessage: string | null;
-  lastTime: number | null;   // 毫秒
+  lastTime: number | null;   
   initiatorConfirmed: number;
   ownerConfirmed: number;
   peerName: string | null;
@@ -29,8 +29,8 @@ interface MessageRaw {
   sessionId: string;
   senderId: string;
   content: string;
-  sendTime: number;         // 毫秒
-  messageType: string;      // text / image / item-card / system
+  sendTime: number;         
+  messageType: string;      
   imageUrl: string | null;
 }
 
@@ -116,7 +116,7 @@ interface UnreadBody {
 }
 
 export class ChatService {
-  /** 获取或创建会话 */
+
   static async getOrCreateSession(
     itemId: number,
     _initiatorId: string,
@@ -127,7 +127,6 @@ export class ChatService {
     return toSession(r);
   }
 
-  /** 用户参与的全部会话（按 lastTime 降序） */
   static async getSessionsForUser(_userId: string): Promise<ChatSession[]> {
     try {
       const list = await ApiClient.get<SessionRaw[]>('/chat/sessions');
@@ -141,7 +140,6 @@ export class ChatService {
     }
   }
 
-  /** 通过 sessionId 获取会话 */
   static async getSession(sessionId: string): Promise<ChatSession | null> {
     try {
       const r = await ApiClient.get<SessionRaw>(`/chat/sessions/${sessionId}`);
@@ -152,13 +150,11 @@ export class ChatService {
     }
   }
 
-  /** 发送文本消息 */
   static async sendMessage(sessionId: string, _senderId: string, content: string): Promise<void> {
     const body: SendMessageBody = { content: content, type: 'text' };
     await ApiClient.post<Object>(`/chat/sessions/${sessionId}/messages`, body);
   }
 
-  /** 发送图片消息 */
   static async sendImageMessage(sessionId: string, _senderId: string, imageUrl: string): Promise<void> {
     const body: SendMessageBody = { content: '', type: 'image', imageUrl: imageUrl };
     await ApiClient.post<Object>(`/chat/sessions/${sessionId}/messages`, body);
@@ -177,7 +173,6 @@ export class ChatService {
     await ApiClient.post<Object>(`/chat/sessions/${sessionId}/messages`, body);
   }
 
-  /** 会话最近消息（支持 afterMsgId 增量） */
   static async getMessages(sessionId: string, afterMsgId: number = 0): Promise<ChatMessage[]> {
     try {
       const params: MessageListQuery = afterMsgId > 0 ? { limit: 50, afterMsgId: afterMsgId } : { limit: 50 };
@@ -192,13 +187,11 @@ export class ChatService {
     }
   }
 
-  /** 确认认领；返回是否双方都已确认（双方确认时后端会自动把物品置为 claimed） */
   static async confirmClaimed(sessionId: string, _userId: string): Promise<boolean> {
     const r = await ApiClient.post<ConfirmResp>(`/chat/sessions/${sessionId}/confirm-claim`);
     return !!(r && r.bothConfirmed);
   }
 
-  /** 查询某会话当前最大 msgId（用于标记已读） */
   static async getMaxMsgId(sessionId: string): Promise<number> {
     try {
       const n = await ApiClient.get<number>(`/chat/sessions/${sessionId}/max-msg-id`);
@@ -209,12 +202,10 @@ export class ChatService {
     }
   }
 
-  /** 删除会话（连同消息） */
   static async deleteSession(sessionId: string): Promise<void> {
     await ApiClient.del<Object>(`/chat/sessions/${sessionId}`);
   }
 
-  /** 获取物品信息（ChatPage 用） */
   static async getItemById(itemId: number): Promise<ItemInfo | null> {
     try {
       const raw = await ApiClient.get<ItemCardRawMin>(`/items/${itemId}`);
@@ -238,18 +229,11 @@ export class ChatService {
     }
   }
 
-  /**
-   * 兼容：之前以 lastReadTime（毫秒）作为边界。改后直接用后端汇总接口，
-   * 忽略 lastReadTime，只返回最新一条未读文本。
-   */
   static async checkUnreadSessions(userId: string, _lastReadTime: number): Promise<string> {
     const summary = await ChatService.getUnreadSummary(userId, {}, {});
     return summary.latest || '';
   }
 
-  /**
-   * 全局未读汇总
-   */
   static async getUnreadSummary(
     _userId: string,
     lastReadMsgIdMap: Record<string, number>,
@@ -271,7 +255,6 @@ export class ChatService {
     }
   }
 
-  /** 各会话未读数 */
   static async getPerSessionUnreadCounts(
     _userId: string,
     lastReadMsgIdMap: Record<string, number>
@@ -288,7 +271,6 @@ export class ChatService {
     }
   }
 
-  /** 旧接口：双方确认后把物品置为 claimed。后端已在 confirmClaimed 里自动处理，这里保留空实现 */
   static async markItemClaimed(_session: ChatSession): Promise<void> {
     return;
   }

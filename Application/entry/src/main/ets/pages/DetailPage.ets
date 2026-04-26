@@ -1,4 +1,4 @@
-import { router, promptAction, window } from '@kit.ArkUI';
+import { router, window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { AuthService } from '../services/AuthService';
 import { ChatService } from '../services/ChatService';
@@ -6,6 +6,7 @@ import { ItemService, MediaItem } from '../services/ItemService';
 import { DisputeDialog } from '../components/DisputeDialog';
 import { ReportService } from '../services/ReportService';
 import { deriveStatus, getStatusLabel, getStatusColor, getStatusBg } from '../model/ItemCategory';
+import { MeteorOverlay } from '../components/MeteorOverlay';
 
 interface DetailParams {
   itemId: number;
@@ -118,7 +119,7 @@ export struct DetailPage {
 
   private async handleToggleLike(): Promise<void> {
     if (!this.currentUserId || !this.params.itemId) {
-      promptAction.showToast({ message: '请先登录' });
+      this.getUIContext().getPromptAction().showToast({ message: '请先登录' });
       return;
     }
     try {
@@ -132,9 +133,9 @@ export struct DetailPage {
         likeCount: this.likeCount
       };
       AppStorage.setOrCreate('hallLikeSync', JSON.stringify(syncPayload));
-      promptAction.showToast({ message: newLikeStatus ? '已点赞' : '已取消点赞' });
+      this.getUIContext().getPromptAction().showToast({ message: newLikeStatus ? '已点赞' : '已取消点赞' });
     } catch (error) {
-      promptAction.showToast({ message: '操作失败' });
+      this.getUIContext().getPromptAction().showToast({ message: '操作失败' });
     }
   }
 
@@ -159,11 +160,11 @@ export struct DetailPage {
       await ItemService.deleteItem(this.params.itemId, this.currentUserId);
       AppStorage.setOrCreate('myPostsRefresh', Date.now());
       AppStorage.setOrCreate('homeNeedRefresh', true);
-      promptAction.showToast({ message: '删除成功' });
+      this.getUIContext().getPromptAction().showToast({ message: '删除成功' });
       this.goBack();
     } catch (error) {
       const msg = error instanceof Error ? error.message : '删除失败';
-      promptAction.showToast({ message: msg });
+      this.getUIContext().getPromptAction().showToast({ message: msg });
     } finally {
       this.isDeleting = false;
     }
@@ -172,11 +173,11 @@ export struct DetailPage {
   async handleDispute(description: string): Promise<void> {
     try {
       await ReportService.reportItem(this.params.itemId, description);
-      promptAction.showToast({ message: '异议已提交，管理员将尽快处理' });
+      this.getUIContext().getPromptAction().showToast({ message: '异议已提交，管理员将尽快处理' });
       this.showDisputeDialog = false;
     } catch (error) {
       const msg = error instanceof Error ? error.message : '提交失败';
-      promptAction.showToast({ message: msg });
+      this.getUIContext().getPromptAction().showToast({ message: msg });
     }
   }
 
@@ -228,7 +229,7 @@ export struct DetailPage {
       }
     } catch (error) {
       console.error('[DetailPage] 创建会话失败:', error);
-      promptAction.showToast({ message: '操作失败' });
+      this.getUIContext().getPromptAction().showToast({ message: '操作失败' });
     } finally {
       this.isContacting = false;
     }
@@ -244,6 +245,10 @@ export struct DetailPage {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  private getTimeLabel(): string {
+    return this.params.type === 'found' ? '捡到时间' : '丢失时间';
+  }
+
   onMediaClick(index: number): void {
     router.pushUrl({
       url: 'pages/MediaPreview',
@@ -253,8 +258,9 @@ export struct DetailPage {
 
   build() {
     Stack() {
+      Stack() {
       Column() {
-        // 顶部导航
+
         Row() {
           Row() {
             Image($r('sys.media.ohos_ic_public_arrow_left'))
@@ -276,10 +282,9 @@ export struct DetailPage {
         .padding({ left: 16, right: 16, top: this.topHeight + 10, bottom: 12 })
         .position({ x: 0, y: 0 }).zIndex(10)
 
-        // 可滚动内容
         Scroll() {
           Column({ space: 0 }) {
-            // 媒体轮播
+
             if (this.mediaList.length > 0) {
               Swiper() {
                 ForEach(this.mediaList, (media: MediaItem, index: number) => {
@@ -313,9 +318,8 @@ export struct DetailPage {
               .justifyContent(FlexAlign.Center)
             }
 
-            // 信息卡片
             Column({ space: 0 }) {
-              // 发布者和点赞
+
               Row({ space: 12 }) {
                 if (this.params.publisherAvatar) {
                   Image(this.params.publisherAvatar)
@@ -345,7 +349,6 @@ export struct DetailPage {
                 }
                 .alignItems(HorizontalAlign.Start).layoutWeight(1)
 
-                // 点赞按钮
                 Row({ space: 2 }) {
                   Text(this.isLiked ? '❤️' : '🤍').fontSize(16)
                   Text(this.likeCount.toString()).fontSize(12).fontColor($r('app.color.text_hint'))
@@ -359,7 +362,6 @@ export struct DetailPage {
 
               Divider().color($r('app.color.divider')).margin({ left: 16, right: 16 })
 
-              // 分类和丢失时间
               if (this.params.category || this.params.lostTime) {
                 Row({ space: 16 }) {
                   if (this.params.category) {
@@ -371,7 +373,7 @@ export struct DetailPage {
                   }
                   if (this.params.lostTime && this.params.lostTime > 0) {
                     Column({ space: 4 }) {
-                      Text('丢失时间').fontSize(12).fontColor($r('app.color.text_hint'))
+                      Text(this.getTimeLabel()).fontSize(12).fontColor($r('app.color.text_hint'))
                       Text(this.getLostTimeString()).fontSize(14).fontColor($r('app.color.text_primary'))
                     }
                     .alignItems(HorizontalAlign.Start)
@@ -382,7 +384,6 @@ export struct DetailPage {
                 Divider().color($r('app.color.divider')).margin({ left: 16, right: 16 })
               }
 
-              // 描述
               Column({ space: 8 }) {
                 Text('物品描述').fontSize(13).fontColor($r('app.color.text_hint')).fontWeight(FontWeight.Medium)
                 Text(this.params.text || '（暂无描述）')
@@ -391,7 +392,6 @@ export struct DetailPage {
               }
               .width('100%').padding({ left: 16, right: 16, top: 16, bottom: 24 })
 
-              // 已认领提示
               if (this.params.status === 'claimed' && this.params.claimedBy) {
                 Row() {
                   Text('✓ 已被 ' + (this.params.claimedByStudentNo || this.params.claimedBy || '用户') + ' 认领')
@@ -411,7 +411,6 @@ export struct DetailPage {
         }
         .width('100%').layoutWeight(1).scrollBar(BarState.Off)
 
-        // 底部按钮
         Column() {
           if (this.currentUserId === this.params.publishId) {
             Row({ space: 12 }) {
@@ -436,7 +435,14 @@ export struct DetailPage {
                   editParams['claimedBy'] = this.params.claimedBy || '';
                   editParams['claimedByStudentNo'] = this.params.claimedByStudentNo || '';
                   editParams['lostTime'] = this.params.lostTime;
-                  router.pushUrl({ url: 'pages/PostPage', params: editParams });
+                  if (AppStorage.get<boolean>('isTabletMode') === true) {
+                    AppStorage.setOrCreate('tabletPrevRightType', 'detail');
+                    AppStorage.setOrCreate('tabletPrevRightParams', this.paramsJson || JSON.stringify(this.params));
+                    AppStorage.setOrCreate('tabletRightParams', JSON.stringify(editParams));
+                    AppStorage.setOrCreate('tabletRightType', 'post');
+                  } else {
+                    router.pushUrl({ url: 'pages/PostPage', params: editParams });
+                  }
                 })
               Button(this.isDeleting ? '删除中...' : '删除')
                 .height(40).fontSize(15).fontColor('#FFFFFF')
@@ -456,7 +462,7 @@ export struct DetailPage {
                     this.params.status = 'active';
                     AppStorage.setOrCreate('myPostsRefresh', Date.now());
                     AppStorage.setOrCreate('homeNeedRefresh', true);
-                    promptAction.showToast({ message: '已恢复为进行中' });
+                    this.getUIContext().getPromptAction().showToast({ message: '已恢复为进行中' });
                   })
               }
               Button('联系TA').layoutWeight(1).height(44)
@@ -490,7 +496,7 @@ export struct DetailPage {
                     this.params.claimedByStudentNo = session ? session.studentNo : this.currentUserId;
                     AppStorage.setOrCreate('myPostsRefresh', Date.now());
                     AppStorage.setOrCreate('homeNeedRefresh', true);
-                    promptAction.showToast({ message: '已标记为已认领' });
+                    this.getUIContext().getPromptAction().showToast({ message: '已标记为已认领' });
                   })
               }
             }
@@ -505,7 +511,6 @@ export struct DetailPage {
       .backgroundColor($r('app.color.bg_page'))
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
 
-      // 对话框遮罩
       if (this.showDisputeDialog) {
         Column() {
           Column().width('100%').layoutWeight(1).onClick(() => {
@@ -527,5 +532,10 @@ export struct DetailPage {
       }
     }
     .width('100%').height('100%')
+
+      MeteorOverlay({ suppressInTablet: true })
+    }
+    .width('100%').height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

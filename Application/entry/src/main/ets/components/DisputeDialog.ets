@@ -1,9 +1,3 @@
-/**
- * 提交异议对话框
- * 用户填写异议说明后点确认，触发 onConfirm 回调
- */
-import { promptAction } from '@kit.ArkUI';
-
 @Component
 export struct DisputeDialog {
   @State description: string = '';
@@ -13,7 +7,7 @@ export struct DisputeDialog {
 
   async handleConfirm(): Promise<void> {
     if (!this.description.trim()) {
-      promptAction.showToast({ message: '请填写异议内容' });
+      this.getUIContext().getPromptAction().showToast({ message: '请填写异议内容' });
       return;
     }
     this.isSubmitting = true;
