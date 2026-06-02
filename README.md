@@ -1,2 +1,2 @@
-# 校园失物招领系统
-app基于arkTS/arkUI开发，后端采用java＋springboot，后台采用vue
+# Campus Lost and Found System
+The app is developed using ArkTS and ArkUI, while the backend utilizes Java with Spring Boot, and the administration panel is built with Vue.
